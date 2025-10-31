@@ -1,9 +1,80 @@
         .DEF    RUNNABLE     0
         .DEF    WAITING      1
+        .DEF    TIMESLICE    50
         .DEF    T0_STACK_BTM 0xFF000
+        .DEF    T1_STACK_BTM 0xF0000
+        .DEF    T2_STACK_BTM 0xE8000
+        .DEF    T3_STACK_BTM 0xE0000
         .DEF    T4_STACK_BTM 0xD8000
 
         .ADDR   0x80000
+
+; Task1 Setup
+        MOVI    SP, T1_STACK_BTM
+        MOVI    R0, print_t1_message
+        PUSH    R0              ; PC
+        MOVI    R0, 0x4000
+        MULI    R0, 0x10000
+        PUSH    R0              ; CR
+        MOVI    R0, 0           ; dummy data
+        PUSH    R0              ; R0
+        PUSH    R0              ; R1
+        PUSH    R0              ; R2
+        PUSH    R0              ; R3
+        PUSH    R0              ; R4
+        PUSH    R0              ; R5
+        PUSH    R0              ; R6
+        PUSH    R0              ; R7
+        PUSH    R0              ; R8
+        PUSH    R0              ; R9
+        PUSH    R0              ; PT
+        MOVI    R0, vector_table
+        PUSH    R0              ; VT
+        STDI    SP, [_t1_sp]
+; Task2 Setup
+        MOVI    SP, T2_STACK_BTM
+        MOVI    R0, print_t2_message
+        PUSH    R0              ; PC
+        MOVI    R0, 0x4000
+        MULI    R0, 0x10000
+        PUSH    R0              ; CR
+        MOVI    R0, 0           ; dummy data
+        PUSH    R0              ; R0
+        PUSH    R0              ; R1
+        PUSH    R0              ; R2
+        PUSH    R0              ; R3
+        PUSH    R0              ; R4
+        PUSH    R0              ; R5
+        PUSH    R0              ; R6
+        PUSH    R0              ; R7
+        PUSH    R0              ; R8
+        PUSH    R0              ; R9
+        PUSH    R0              ; PT
+        MOVI    R0, vector_table
+        PUSH    R0              ; VT
+        STDI    SP, [_t2_sp]
+; Task3 Setup
+        MOVI    SP, T3_STACK_BTM
+        MOVI    R0, print_t3_message
+        PUSH    R0              ; PC
+        MOVI    R0, 0x4000
+        MULI    R0, 0x10000
+        PUSH    R0              ; CR
+        MOVI    R0, 0           ; dummy data
+        PUSH    R0              ; R0
+        PUSH    R0              ; R1
+        PUSH    R0              ; R2
+        PUSH    R0              ; R3
+        PUSH    R0              ; R4
+        PUSH    R0              ; R5
+        PUSH    R0              ; R6
+        PUSH    R0              ; R7
+        PUSH    R0              ; R8
+        PUSH    R0              ; R9
+        PUSH    R0              ; PT
+        MOVI    R0, vector_table
+        PUSH    R0              ; VT
+        STDI    SP, [_t3_sp]
 ; Task4 Setup
         MOVI    SP, T4_STACK_BTM
         MOVI    R0, idle_loop
@@ -34,6 +105,38 @@
         JPI     os_start
 idle_loop:
         JPI     idle_loop
+
+print_t1_message:
+        MOVI    R8, t1_message
+        SYSCALL 1
+        MOVI    R8, WAITING
+        STBI    R8, [_t1_status]
+_t1_loop:
+        JPI     _t1_loop
+
+print_t2_message:
+        MOVI    R8, t2_message
+        SYSCALL 1
+        MOVI    R8, WAITING
+        STBI    R8, [_t2_status]
+_t2_loop:
+        JPI     _t2_loop
+
+print_t3_message:
+        MOVI    R8, t3_message
+        SYSCALL 1
+        MOVI    R8, WAITING
+        STBI    R8, [_t3_status]
+_t3_loop:
+        JPI     _t3_loop
+
+t1_message:
+        .STRING "This message was displayed by Task 1.\n"
+t2_message:
+        .STRING "This message was displayed by Task 2.\n"
+t3_message:
+        .STRING "This message was displayed by Task 3.\n"
+
 os_start:
         SYSCALL 10
         STDI    R8, [basetime]
@@ -159,6 +262,29 @@ _sleep_proc:
 _sleep_proc_end:
         POP     R0
 
+_timeslice_proc:
+        PUSH    R0
+        PUSH    R1
+        LDDI    R0, [basetick]
+        SBTI    R0, 0
+        JPNZI   _check_timeslice
+        MOV     R0, TP
+        STDI    R0, [basetick]
+_check_timeslice:
+        MOV     R1, TP
+        SUB     R1, R0
+        SBTI    R1, TIMESLICE
+        JPUI    _no_task_switch
+        MOVI    R0, 0
+        STDI    R0, [basetick]
+        POP     R1
+        POP     R0
+        JPI     _task_switch
+_no_task_switch:
+        POP     R1
+        POP     R0
+        IRET
+
 _task_switch:
         PUSH    R0
         PUSH    R1
@@ -172,31 +298,38 @@ _task_switch:
         PUSH    R9
         PUSH    PT
         PUSH    VT
-
+_save_sp:
         LDBI    R0, [current_task]
-        SBTI    R0, 4
-        JPZI    _c4
-_c0:
-        LDBI    R0, [_t0_status]
-        SBTI    R0, RUNNABLE
-        JPZI    _int_timer_end
-        JPI     _switch_t4
-_c4:
-        LDBI    R0, [_t0_status]
-        SBTI    R0, RUNNABLE
-        JPZI    _switch_t0
-        JPI     _int_timer_end
-_switch_t0:
-        MOVI    R0, 0
-        STBI    R0, [current_task]
-        STDI    SP, [_t4_sp]
-        LDDI    SP, [_t0_sp]
-        JPI     _int_timer_end
-_switch_t4:
+        MOV     R1, R0
+        MULI    R1, 4
+        ADDI    R1, task_stack_pointer
+        STD     SP, [R1]
+
+        MOVI    R2, 0
+        INC     R0
+        MODI    R0, 4
+_find_loop:
+        MOVI    R1, task_status
+        ADD     R1, R0
+        LDB     R3, [R1]
+        SBTI    R3, RUNNABLE
+        JPZI    _select_next
+        INC     R2
+        SBTI    R2, 4
+        JPUI    _another_cand
         MOVI    R0, 4
+        JPI     _select_next
+_another_cand:
+        INC     R0
+        MODI    R0, 4
+        JPI     _find_loop
+_select_next:
         STBI    R0, [current_task]
-        STDI    SP, [_t0_sp]
-        LDDI    SP, [_t4_sp]
+        MOV     R8, R0
+        SYSCALL 30
+        MULI    R0, 4
+        ADDI    R0, task_stack_pointer
+        LDD     SP, [R0]
 _int_timer_end:
         POP     VT
         POP     PT
@@ -236,6 +369,8 @@ end_message:
         .STRING "bye.\n\n"
 basetime:
         .DWORD  0
+basetick:
+        .DWORD  0
 
 ; Task DATA
 current_task:
@@ -244,17 +379,35 @@ current_task:
 task_status:
 _t0_status:
         .BYTE   RUNNABLE
+_t1_status:
+        .BYTE   RUNNABLE
+_t2_status:
+        .BYTE   RUNNABLE
+_t3_status:
+        .BYTE   RUNNABLE
 _t4_status:
         .BYTE   WAITING
 
 task_sleep_ticks:
 _t0_sleep_ticks:
         .WORD   0
+_t1_sleep_ticks:
+        .WORD   0
+_t2_sleep_ticks:
+        .WORD   0
+_t3_sleep_ticks:
+        .WORD   0
 _t4_sleep_ticks:
         .WORD   0
 
 task_stack_pointer:
 _t0_sp:
+        .DWORD  0
+_t1_sp:
+        .DWORD  0
+_t2_sp:
+        .DWORD  0
+_t3_sp:
         .DWORD  0
 _t4_sp:
         .DWORD  0
