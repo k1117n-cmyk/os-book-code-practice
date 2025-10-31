@@ -1,4 +1,6 @@
         .ADDR   0x80000
+        SYSCALL 10
+        STDI    R8, [basetime]
         MOVI    TP, 0
         MOVI    VT, vector_table
         EI
@@ -68,6 +70,10 @@ do_enter:
         MOVI    R9, cmd_exec
         CALLI   cmp_str
         JPZI    do_exec
+; date
+        MOVI    R9, cmd_date
+        CALLI   cmp_str
+        JPZI    do_date
 
         MOVI    R8, cmd_error1
         SYSCALL 1
@@ -92,6 +98,10 @@ do_exec:
         CALLI   get_nth_token
         SYSCALL 22
         JPI     cmdloop
+do_date:
+        LDDI    R8, [basetime]
+        SYSCALL 11
+        JPI     cmdloop
 
         HALT
 
@@ -114,12 +124,16 @@ cmd_ls:
         .STRING "ls"
 cmd_exec:
         .STRING "exec"
+cmd_date:
+        .STRING "date"
 cmd_error1:
         .STRING "Command "
 cmd_error2:
         .STRING " not found.\n"
 end_message:
         .STRING "bye.\n\n"
+basetime:
+        .DWORD  0
 
 ; System Function
         .ADDR   0xB0000
