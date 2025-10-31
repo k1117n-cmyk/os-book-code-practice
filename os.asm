@@ -1,5 +1,6 @@
         .DEF    RUNNABLE     0
         .DEF    WAITING      1
+        .DEF    NOT_IN_USE   2
         .DEF    TIMESLICE    5
         .DEF    T0_STACK_BTM 0xFF000
         .DEF    T1_STACK_BTM 0xF0000
@@ -7,6 +8,9 @@
         .DEF    T3_STACK_BTM 0xE0000
         .DEF    T4_STACK_BTM 0xD8000
         .DEF    T0_PT        0xFFF00
+        .DEF    T1_PT        0xFFF10
+        .DEF    T2_PT        0xFFF20
+        .DEF    T3_PT        0xFFF30
 
         .ADDR   0x80000
 
@@ -14,7 +18,7 @@
         MOVI    SP, T1_STACK_BTM
         MOVI    R0, 0
         PUSH    R0              ; PC
-        MOVI    R0, 0x4000
+        MOVI    R0, 0xC000
         MULI    R0, 0x10000
         PUSH    R0              ; CR
         MOVI    R0, 0           ; dummy data
@@ -28,6 +32,7 @@
         PUSH    R0              ; R7
         PUSH    R0              ; R8
         PUSH    R0              ; R9
+        MOVI    R0, T1_PT
         PUSH    R0              ; PT
         MOVI    R0, vector_table
         PUSH    R0              ; VT
@@ -36,7 +41,7 @@
         MOVI    SP, T2_STACK_BTM
         MOVI    R0, 0
         PUSH    R0              ; PC
-        MOVI    R0, 0x4000
+        MOVI    R0, 0xC000
         MULI    R0, 0x10000
         PUSH    R0              ; CR
         MOVI    R0, 0           ; dummy data
@@ -50,6 +55,7 @@
         PUSH    R0              ; R7
         PUSH    R0              ; R8
         PUSH    R0              ; R9
+        MOVI    R0, T2_PT
         PUSH    R0              ; PT
         MOVI    R0, vector_table
         PUSH    R0              ; VT
@@ -58,7 +64,7 @@
         MOVI    SP, T3_STACK_BTM
         MOVI    R0, 0
         PUSH    R0              ; PC
-        MOVI    R0, 0x4000
+        MOVI    R0, 0xC000
         MULI    R0, 0x10000
         PUSH    R0              ; CR
         MOVI    R0, 0           ; dummy data
@@ -72,6 +78,7 @@
         PUSH    R0              ; R7
         PUSH    R0              ; R8
         PUSH    R0              ; R9
+        MOVI    R0, T3_PT
         PUSH    R0              ; PT
         MOVI    R0, vector_table
         PUSH    R0              ; VT
@@ -181,6 +188,10 @@ do_enter:
         MOVI    R9, cmd_exec
         CALLI   cmp_str
         JPZI    do_exec
+; taskexec
+        MOVI    R9, cmd_taskexec
+        CALLI   cmp_str
+        JPZI    do_taskexec
 ; date
         MOVI    R9, cmd_date
         CALLI   cmp_str
@@ -208,6 +219,44 @@ do_exec:
         MOVI    R9, keybuffer
         CALLI   get_nth_token
         SYSCALL 22
+        JPI     cmdloop
+do_taskexec:
+        MOVI    R8, 2
+        MOVI    R9, keybuffer
+        CALLI   get_nth_token
+        MOV     R9, R8
+        PUSH    R0
+        PUSH    R1
+        PUSH    R2
+        MOVI    R0, task_status + 1
+        MOVI    R2, 1
+        LDB     R1, [R0]
+        SBTI    R1, NOT_IN_USE
+        JPZI    _tid_found
+        INC     R0
+        INC     R2
+        LDB     R1, [R0]
+        SBTI    R1, NOT_IN_USE
+        JPZI    _tid_found
+        INC     R0
+        INC     R2
+        LDB     R1, [R0]
+        SBTI    R1, NOT_IN_USE
+        JPZI    _tid_found
+        MOVI    R8, error_tid_msg
+        SYSCALL 1
+        POP     R2
+        POP     R1
+        POP     R0
+        JPI     cmdloop
+_tid_found:
+        MOV     R8, R2
+        SYSCALL 23
+        MOVI    R1, RUNNABLE
+        STB     R1, [R0]
+        POP     R2
+        POP     R1
+        POP     R0
         JPI     cmdloop
 do_date:
         LDDI    R8, [basetime]
@@ -355,6 +404,8 @@ cmd_ls:
         .STRING "ls"
 cmd_exec:
         .STRING "exec"
+cmd_taskexec:
+        .STRING "taskexec"
 cmd_date:
         .STRING "date"
 cmd_error1:
@@ -363,6 +414,8 @@ cmd_error2:
         .STRING " not found.\n"
 end_message:
         .STRING "bye.\n\n"
+error_tid_msg:
+        .STRING "Could not assign tid.\n"
 basetime:
         .DWORD  0
 basetick:
@@ -376,11 +429,11 @@ task_status:
 _t0_status:
         .BYTE   RUNNABLE
 _t1_status:
-        .BYTE   WAITING
+        .BYTE   NOT_IN_USE
 _t2_status:
-        .BYTE   WAITING
+        .BYTE   NOT_IN_USE
 _t3_status:
-        .BYTE   WAITING
+        .BYTE   NOT_IN_USE
 _t4_status:
         .BYTE   WAITING
 
