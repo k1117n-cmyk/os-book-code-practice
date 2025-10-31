@@ -224,6 +224,18 @@ _get_nth_token_end:
         MOVI    R8, tokenbuffer
         RET
 
+        .ADDR   0xB2000
+sleep:
+        PUSH    R0
+        MOV     R0, TP
+        MULI    R8, 10
+        ADD     R0, R8
+_wait_loop:
+        SBT     TP, R0
+        JPUI    _wait_loop
+        POP     R0
+        RET
+
 ; Buffer
         .ADDR   0xC0000
 keybuffer:
