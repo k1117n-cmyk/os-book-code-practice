@@ -1,6 +1,6 @@
         .DEF    RUNNABLE     0
         .DEF    WAITING      1
-        .DEF    TIMESLICE    50
+        .DEF    TIMESLICE    5
         .DEF    T0_STACK_BTM 0xFF000
         .DEF    T1_STACK_BTM 0xF0000
         .DEF    T2_STACK_BTM 0xE8000
@@ -107,28 +107,23 @@ idle_loop:
         JPI     idle_loop
 
 print_t1_message:
-        MOVI    R8, t1_message
-        SYSCALL 1
-        MOVI    R8, WAITING
-        STBI    R8, [_t1_status]
-        DI
-        JPI     _task_switch
-
+        MOVI    R8, 0x41
+        SYSCALL 0
+        MOVI    R8, 5
+        CALLI   sleep
+        JPI     print_t1_message
 print_t2_message:
-        MOVI    R8, t2_message
-        SYSCALL 1
-        MOVI    R8, WAITING
-        STBI    R8, [_t2_status]
-        DI
-        JPI     _task_switch
-
+        MOVI    R8, 0x42
+        SYSCALL 0
+        MOVI    R8, 10
+        CALLI   sleep
+        JPI     print_t2_message
 print_t3_message:
-        MOVI    R8, t3_message
-        SYSCALL 1
-        MOVI    R8, WAITING
-        STBI    R8, [_t3_status]
-        DI
-        JPI     _task_switch
+        MOVI    R8, 0x43
+        SYSCALL 0
+        MOVI    R8, 20
+        CALLI   sleep
+        JPI     print_t3_message
 
 t1_message:
         .STRING "This message was displayed by Task 1.\n"
@@ -250,16 +245,33 @@ int_timer:
 
 _sleep_proc:
         PUSH    R0
-        LDWI    R0, [_t0_sleep_ticks]
+        PUSH    R1
+        PUSH    R2
+        PUSH    R3
+        MOVI    R1, task_sleep_ticks
+        MOVI    R2, task_status
+        MOVI    R3, 0
+_sleep_proc_loop:
+        LDW     R0, [R1]
         SBTI    R0, 0
-        JPZI    _sleep_proc_end
+        JPZI    _next_task
         DEC     R0
-        STWI    R0, [_t0_sleep_ticks]
+        STW     R0, [R1]
         SBTI    R0, 0
-        JPNZI   _sleep_proc_end
+        JPNZI   _next_task
         MOVI    R0, RUNNABLE
-        STBI    R0, [_t0_status]
+        STB     R0, [R2]
+_next_task:
+        INC     R3
+        SBTI    R3, 4
+        JPZI    _sleep_proc_end
+        ADDI    R1, 2
+        INC     R2
+        JPI     _sleep_proc_loop
 _sleep_proc_end:
+        POP     R3
+        POP     R2
+        POP     R1
         POP     R0
 
 _timeslice_proc:
@@ -503,10 +515,19 @@ _get_nth_token_end:
 
         .ADDR   0xB2000
 sleep:
+        PUSH    R0
+        PUSH    R1
+        LDBI    R0, [current_task]
+        MOV     R1, R0
+        MULI    R1, 2
+        ADDI    R1, task_sleep_ticks
         MULI    R8, 10
-        STWI    R8, [_t0_sleep_ticks]
+        STW     R8, [R1]
+        ADDI    R0, task_status
         MOVI    R8, WAITING
-        STBI    R8, [_t0_status]
+        STB     R8, [R0]
+        POP     R1
+        POP     R0
         MOVI    R8, _sleep_end
         PUSH    R8      ; PC
         PUSH    CR
