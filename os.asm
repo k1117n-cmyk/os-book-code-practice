@@ -6,12 +6,13 @@
         .DEF    T2_STACK_BTM 0xE8000
         .DEF    T3_STACK_BTM 0xE0000
         .DEF    T4_STACK_BTM 0xD8000
+        .DEF    T0_PT        0xFFF00
 
         .ADDR   0x80000
 
 ; Task1 Setup
         MOVI    SP, T1_STACK_BTM
-        MOVI    R0, print_t1_message
+        MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0x4000
         MULI    R0, 0x10000
@@ -33,7 +34,7 @@
         STDI    SP, [_t1_sp]
 ; Task2 Setup
         MOVI    SP, T2_STACK_BTM
-        MOVI    R0, print_t2_message
+        MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0x4000
         MULI    R0, 0x10000
@@ -55,7 +56,7 @@
         STDI    SP, [_t2_sp]
 ; Task3 Setup
         MOVI    SP, T3_STACK_BTM
-        MOVI    R0, print_t3_message
+        MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0x4000
         MULI    R0, 0x10000
@@ -79,7 +80,7 @@
         MOVI    SP, T4_STACK_BTM
         MOVI    R0, idle_loop
         PUSH    R0              ; PC
-        MOVI    R0, 0x4000
+        MOVI    R0, 0xC000
         MULI    R0, 0x10000
         PUSH    R0              ; CR
         MOVI    R0, 0           ; dummy data
@@ -93,6 +94,7 @@
         PUSH    R0              ; R7
         PUSH    R0              ; R8
         PUSH    R0              ; R9
+        MOVI    R0, T0_PT
         PUSH    R0              ; PT
         MOVI    R0, vector_table
         PUSH    R0              ; VT
@@ -105,38 +107,16 @@
         JPI     os_start
 idle_loop:
         JPI     idle_loop
-print_t1_message:
-        MOVI    R8, 0x41
-        SYSCALL 0
-        MOVI    R8, 5
-        CALLI   sleep
-        JPI     print_t1_message
-print_t2_message:
-        MOVI    R8, 0x42
-        SYSCALL 0
-        MOVI    R8, 10
-        CALLI   sleep
-        JPI     print_t2_message
-print_t3_message:
-        MOVI    R8, 0x43
-        SYSCALL 0
-        MOVI    R8, 20
-        CALLI   sleep
-        JPI     print_t3_message
-
-t1_message:
-        .STRING "This message was displayed by Task 1.\n"
-t2_message:
-        .STRING "This message was displayed by Task 2.\n"
-t3_message:
-        .STRING "This message was displayed by Task 3.\n"
 
 os_start:
         SYSCALL 10
         STDI    R8, [basetime]
         MOVI    TP, 0
         MOVI    VT, vector_table
-        EI
+        MOVI    PT, T0_PT
+        MOVI    R0, 0xC000
+        MULI    R0, 0x10000
+        MOV     CR, R0          ; EI + MMU on
         MOVI    R8, start_message
         SYSCALL 1
 cmdloop:
@@ -389,11 +369,11 @@ task_status:
 _t0_status:
         .BYTE   RUNNABLE
 _t1_status:
-        .BYTE   RUNNABLE
+        .BYTE   WAITING
 _t2_status:
-        .BYTE   RUNNABLE
+        .BYTE   WAITING
 _t3_status:
-        .BYTE   RUNNABLE
+        .BYTE   WAITING
 _t4_status:
         .BYTE   WAITING
 
