@@ -16,6 +16,8 @@
 
 ; Task1 Setup
         MOVI    SP, T1_STACK_BTM
+        MOVI    R0, task_exit
+        PUSH    R0
         MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0xC000
@@ -39,6 +41,8 @@
         STDI    SP, [_t1_sp]
 ; Task2 Setup
         MOVI    SP, T2_STACK_BTM
+        MOVI    R0, task_exit
+        PUSH    R0
         MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0xC000
@@ -62,6 +66,8 @@
         STDI    SP, [_t2_sp]
 ; Task3 Setup
         MOVI    SP, T3_STACK_BTM
+        MOVI    R0, task_exit
+        PUSH    R0
         MOVI    R0, 0
         PUSH    R0              ; PC
         MOVI    R0, 0xC000
@@ -589,6 +595,53 @@ _resume_point:
         SBTI    R8, 0
         JPZI    _do_yield
 _got_key:
+        RET
+
+        .ADDR   0xB4000
+task_exit:
+        PUSH    R0
+        PUSH    R1
+        PUSH    R2
+        LDBI    R0, [current_task]
+        SBTI    R0, 0
+        JPZI    _task_exit_end_t0t4
+        SBTI    R0, 4
+        JPZI    _task_exit_end_t0t4
+        MOVI    R2, task_status
+        ADD     R2, R0
+        MOVI    R1, NOT_IN_USE
+        STB     R1, [R2]
+_check1:
+        SBTI    R0, 1
+        JPNZI   _check2
+_exit1:
+        MOVI    R1, T1_STACK_BTM
+        STDI    R1, [_t1_sp]
+        JPI     _task_exit_end
+_check2:
+        SBTI    R0, 2
+        JPNZI   _exit3
+_exit2:
+        MOVI    R1, T2_STACK_BTM
+        STDI    R1, [_t2_sp]
+        JPI     _task_exit_end
+_exit3:
+        MOVI    R1, T3_STACK_BTM
+        STDI    R1, [_t3_sp]
+_task_exit_end:
+        POP     R2
+        POP     R1
+        POP     R0
+        MOVI    R2, task_exit
+        PUSH    R2
+        MOVI    R2, 0
+        PUSH    R2
+        PUSH    CR
+        JPI     _task_switch
+_task_exit_end_t0t4:
+        POP     R2
+        POP     R1
+        POP     R0
         RET
 
 ; Buffer
