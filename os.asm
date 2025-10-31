@@ -335,6 +335,13 @@ _int_timer_end:
 int_other:
         IRET
 
+int_pagefault:
+        MOVI    R8, pagefault_msg
+        SYSCALL 1
+        HALT
+pagefault_msg:
+        .STRING "Page Fault has occurred.\n"
+
 ; DATA
 start_message:
         .STRING "Welcome to Simple OS!\n"
@@ -546,4 +553,4 @@ vector_table:
         .DWORD  int_timer
         .DWORD  int_other
         .DWORD  int_other
-        .DWORD  int_other
+        .DWORD  int_pagefault
