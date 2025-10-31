@@ -7,4 +7,4 @@ loop_start:
         INC     R1
         JPI     loop_start
 prog_end:
-        HALT
+        RET

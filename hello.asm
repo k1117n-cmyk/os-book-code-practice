@@ -1,6 +1,6 @@
         MOVI    R8, hello_str
         SYSCALL 1
-        HALT
+        RET
 
 hello_str:
         .STRING "Hello, World!\n"
