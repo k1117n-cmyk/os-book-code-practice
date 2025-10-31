@@ -1,3 +1,3 @@
-movi    r0, 10
-muli    R0, 10
-halt
+MOVI    R0, (100 / 10)
+MULI    R0, (1 + 1) * 5
+HALT
