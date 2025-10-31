@@ -1,4 +1,7 @@
         .ADDR   0x80000
+        MOVI    TP, 0
+        MOVI    VT, vector_table
+        EI
         MOVI    R8, start_message
         SYSCALL 1
 cmdloop:
@@ -91,6 +94,12 @@ do_exec:
         JPI     cmdloop
 
         HALT
+
+; Handler
+int_timer:
+        INC     TP
+int_other:
+        IRET
 
 ; DATA
 start_message:
@@ -209,3 +218,11 @@ keybuffer:
         .ADDR   0xC1000
 tokenbuffer:
         .BYTE   0
+
+; Vector Table
+        .ADDR   0xFF800
+vector_table:
+        .DWORD  int_timer
+        .DWORD  int_other
+        .DWORD  int_other
+        .DWORD  int_other
