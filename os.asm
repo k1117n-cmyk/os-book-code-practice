@@ -391,11 +391,64 @@ int_other:
         IRET
 
 int_pagefault:
-        MOVI    R8, pagefault_msg
+        PUSH    R0
+        PUSH    R1
+        PUSH    R2
+        PUSH    R3
+        PUSH    R4
+        PUSH    R8
+
+        MOV     R0, SP
+        ADDI    R0, 28
+        LDD     R1, [R0]
+        SYSCALL 41
+        SBT     R1, R8
+        JPZI    _fetch_induced
+        SUBI    R1, 4
+        STD     R1, [R0]
+_fetch_induced:
+
+        DIVI    R8, 0x10000
+        MOVI    R0, 0
+        MOVI    R1, T0_PT
+        MOVI    R2, 0
+_find_pp_loop:
+        MOV     R3, R1
+        ADD     R3, R0
+        LDB     R4, [R3]
+        SBT     R4, R2
+        JPZI    _next_pp
+        INC     R0
+        SBTI    R0, 0x40
+        JPZI    _pp_found
+        JPI     _find_pp_loop
+_next_pp:
+        MOVI    R0, 0
+        INC     R2
+        SBTI    R2, 0x10
+        JPZI    _pp_full_error
+        JPI     _find_pp_loop
+_pp_found:
+        LDBI    R0, [current_task]
+        MULI    R0, 0x10
+        ADDI    R0, T0_PT
+        ADD     R0, R8
+        STB     R2, [R0]
+
+        POP     R8
+        POP     R4
+        POP     R3
+        POP     R2
+        POP     R1
+        POP     R0
+        IRET
+
+_pp_full_error:
+        MOVI    R8, pp_full_msg
         SYSCALL 1
         HALT
-pagefault_msg:
-        .STRING "Page Fault has occurred.\n"
+pp_full_msg:
+        .STRING "Can't allocate physical page.\n"
 
 ; DATA
 start_message:
