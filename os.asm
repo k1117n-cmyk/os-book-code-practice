@@ -105,7 +105,6 @@
         JPI     os_start
 idle_loop:
         JPI     idle_loop
-
 print_t1_message:
         MOVI    R8, 0x41
         SYSCALL 0
@@ -150,9 +149,7 @@ draw_cmdline:
         MOVI    R8, keybuffer
         SYSCALL 1
 keyloop:
-        SYSCALL 3
-        SBTI    R8, 0
-        JPZI    keyloop
+        CALLI   key_input
         SBTI    R8, 92
         JPZI    keyloop
         SBTI    R8, 8
@@ -534,6 +531,24 @@ sleep:
         DI
         JPI     _task_switch
 _sleep_end:
+        RET
+
+        .ADDR   0xB3000
+key_input:
+        SYSCALL 3
+        SBTI    R8, 0
+        JPNZI   _got_key
+_do_yield:
+        MOVI    R8, _resume_point
+        PUSH    R8
+        PUSH    CR
+        DI
+        JPI     _task_switch
+_resume_point:
+        SYSCALL 3
+        SBTI    R8, 0
+        JPZI    _do_yield
+_got_key:
         RET
 
 ; Buffer
