@@ -111,24 +111,24 @@ print_t1_message:
         SYSCALL 1
         MOVI    R8, WAITING
         STBI    R8, [_t1_status]
-_t1_loop:
-        JPI     _t1_loop
+        DI
+        JPI     _task_switch
 
 print_t2_message:
         MOVI    R8, t2_message
         SYSCALL 1
         MOVI    R8, WAITING
         STBI    R8, [_t2_status]
-_t2_loop:
-        JPI     _t2_loop
+        DI
+        JPI     _task_switch
 
 print_t3_message:
         MOVI    R8, t3_message
         SYSCALL 1
         MOVI    R8, WAITING
         STBI    R8, [_t3_status]
-_t3_loop:
-        JPI     _t3_loop
+        DI
+        JPI     _task_switch
 
 t1_message:
         .STRING "This message was displayed by Task 1.\n"
