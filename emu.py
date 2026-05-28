@@ -65,7 +65,7 @@ def _tty_show_vc(idx: int):
     sys.stdout.write("\033[2J\033[H")            # clear screen + home
     sys.stdout.write(f"\n\033[90m[VC {idx} | Ctrl+]に続いて0～3で切替]\033[0m\n")
     buf = vc_buffers[idx]
-    buf_norm = buf.replace('\r\n', '\n').replace('\r', '\n')
+    buf_norm = buf.replace('\r\n', '\n')
     try:
         rend = buf_norm.encode('utf-8', errors='backslashreplace').decode('unicode_escape')
     except Exception:
@@ -96,7 +96,7 @@ def vc_write(s):
         s = str(s)
 
     # 改行を正規化（内部は \n）
-    s = s.replace('\r\n', '\n').replace('\r', '\n')
+    s = s.replace('\r\n', '\n')
 
     # バックスラッシュ表記（\n, \r, \t, \b, \x1b, \033, \uXXXX など）を実体化
     try:
