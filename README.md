@@ -22,8 +22,8 @@ CPUエミュレータとアセンブラを動かすには、Python 3.8以降が�
 条件を満たした環境であれば、次の手順でOSのコードをアセンブルして、CPUエミュレータで稼働できます。
 
 ```
-$ python asm.py os.asm
-$ python emu.py
+python asm.py os.asm
+python emu.py
 ```
 
 ## 著者
