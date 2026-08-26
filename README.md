@@ -26,6 +26,13 @@ python asm.py os.asm
 python emu.py
 ```
 
+書籍1-4の `hello.asm` のように、OSではなく単体のアセンブリプログラムを直接実行したい場合は、初期章用のCPUエミュレータ `early.py` を使ってください。書籍ではアセンブリコードを自作し、それ以外のPythonファイルは事前に用意されたものを使う前提になっているため、このリポジトリでは序盤のプログラムを動かすための実行環境として `early.py` を公開しています。
+
+```
+python asm.py asm_code/hello.asm
+python early.py asm_code/hello.bin
+```
+
 ## 著者
 
 末安 泰三 tsueyasu@gmail.com
