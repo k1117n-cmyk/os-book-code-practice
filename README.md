@@ -67,3 +67,5 @@ python3 early.py asm_code/pi.bin
 ## 関連記事
 
 UNIX Cafeの記事で、第3章まででつまずきやすい点と `early.py` の使い方を整理しています。
+
+- [「いちばんやさしい！OS自作超入門」第3章まででつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter3-notes/)
