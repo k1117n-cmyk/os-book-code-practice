@@ -1,9 +1,11 @@
 import re
 import sys
+import difflib
 
 # コメント処理：クオート外の ';' だけをコメント開始として扱う
 _COMMENT_SPLIT_RE = re.compile(r';(?=(?:[^"]*"[^"]*")*[^"]*$)')
 _IDENT_RE = re.compile(r'\b([A-Za-z_][A-Za-z0-9_]*)\b')
+source_name = '<input>'
 
 def strip_comment_outside_quotes(s: str) -> str:
     if not s:
@@ -17,7 +19,10 @@ binary_code = bytearray()
 instruction_size = 4  # 32ビット = 4バイト
 
 # 第1パスで未解決の .DEF を保留
-_deferred_defs = []   # list[tuple[name, expr, lineno]]
+_deferred_defs = []   # list[tuple[name, expr, lineno, raw_line]]
+
+class AsmError(Exception):
+    pass
 
 # ===== オペコード辞書 =====
 type0_opdic = {'NOP':0b0000, 'HALT':0b0001, 'RET':0b0010, 'IRET':0b0011,
@@ -45,7 +50,79 @@ registers_dic = {'R0':0b0000, 'R1':0b0001, 'R2':0b0010, 'R3':0b0011,
                  'R8':0b1000, 'R9':0b1001, 'TP':0b1010, 'SP':0b1011,
                  'PC':0b1100, 'PT':0b1101, 'VT':0b1110, 'CR':0b1111}
 
-def eval_expression(exp_str: str):
+def print_source_error(lineno: int, raw_line: str, message: str, token: str = None):
+    print(f"{source_name}:{lineno}: error: {message}", file=sys.stderr)
+    if raw_line is not None:
+        print(f"    {raw_line}", file=sys.stderr)
+        if token:
+            col = raw_line.find(token)
+            if col >= 0:
+                print(f"    {' ' * col}{'^' * max(1, len(token))}", file=sys.stderr)
+
+def error(lineno: int, raw_line: str, message: str, token: str = None):
+    print_source_error(lineno, raw_line, message, token)
+    sys.exit(1)
+
+def undefined_symbol_error(name: str, lineno: int, raw_line: str):
+    print_source_error(lineno, raw_line, f"undefined symbol '{name}'", name)
+    matches = difflib.get_close_matches(name, symbol_table.keys(), n=1, cutoff=0.75)
+    if matches:
+        print(f"hint: did you mean '{matches[0]}'?", file=sys.stderr)
+    sys.exit(1)
+
+def split_operands(s: str):
+    return [p.strip() for p in re.split(r'[, \t\[\]]+', s) if p.strip()]
+
+def require_operand_count(parts, count: int, lineno: int, raw_line: str):
+    actual = len(parts) - 1
+    opcode = parts[0].upper() if parts else ''
+    if actual < count:
+        error(lineno, raw_line, f"{opcode} のオペランドが足りません（必要: {count}, 実際: {actual}）", opcode)
+    if actual > count:
+        error(lineno, raw_line, f"{opcode} のオペランドが多過ぎます（必要: {count}, 実際: {actual}）", parts[count + 1])
+
+def register_code(name: str, lineno: int, raw_line: str):
+    reg = name.upper()
+    if reg not in registers_dic:
+        error(lineno, raw_line, f"レジスタ名が不正です: {name}", name)
+    return registers_dic[reg]
+
+def require_expression(expr: str, lineno: int, raw_line: str, what: str):
+    if not expr.strip():
+        error(lineno, raw_line, f"{what} の式がありません", what)
+    return expr
+
+def require_directive_expr(s: str, lineno: int, raw_line: str, directive: str):
+    fields = s.split(None, 1)
+    if len(fields) < 2 or not fields[1].strip():
+        error(lineno, raw_line, f"{directive} の引数がありません", directive)
+    return fields[1]
+
+def parse_register_expression(s: str, lineno: int, raw_line: str, opcode: str):
+    m = re.match(r'\S+\s+([^,\s]+)\s*,\s*(.+)$', s)
+    if not m:
+        error(lineno, raw_line, f"{opcode} の書式が不正です", opcode)
+    return m.group(1), require_expression(m.group(2), lineno, raw_line, opcode)
+
+def parse_expression_operand(s: str, lineno: int, raw_line: str, opcode: str):
+    fields = s.split(None, 1)
+    if len(fields) < 2:
+        error(lineno, raw_line, f"{opcode} のオペランドが足りません（必要: 1, 実際: 0）", opcode)
+    return require_expression(fields[1], lineno, raw_line, opcode)
+
+def checked_int(value, lineno: int, raw_line: str, token: str):
+    try:
+        return int(value)
+    except Exception:
+        error(lineno, raw_line, f"整数に変換できません: {value}", token)
+
+def checked_imm20(value, lineno: int, raw_line: str, token: str):
+    n = checked_int(value, lineno, raw_line, token)
+    if n < -0x80000 or n > 0xFFFFF:
+        error(lineno, raw_line, f"即値が20ビット範囲外です: {n}", token)
+    return n & 0xFFFFF
+
+def eval_expression(exp_str: str, lineno: int = None, raw_line: str = None):
     """
     式文字列の識別子(ラベル/定数名)をsymbol_tableで数値に置換し、evalで評価。
     """
@@ -55,8 +132,20 @@ def eval_expression(exp_str: str):
             return str(symbol_table[name])
         # 未定義はそのまま残す（後でevalが失敗 → 呼び出し側で検出）
         return name
+    unresolved = [m.group(1) for m in _IDENT_RE.finditer(exp_str)
+                  if m.group(1) not in symbol_table]
+    if unresolved:
+        name = unresolved[0]
+        if lineno is not None:
+            undefined_symbol_error(name, lineno, raw_line)
+        raise AsmError(f"undefined symbol '{name}'")
     exp = _IDENT_RE.sub(_repl, exp_str)
-    return eval(exp)
+    try:
+        return eval(exp, {"__builtins__": {}}, {})
+    except Exception as e:
+        if lineno is not None:
+            error(lineno, raw_line, f"invalid expression '{exp_str}': {e}", exp_str)
+        raise AsmError(f"invalid expression '{exp_str}': {e}") from e
 
 def first_pass(source_text: str):
     """第1パス: ラベル収集と概算レイアウト。未解決の.DEFは保留。.ADDR は未解決ならエラー。"""
@@ -92,36 +181,31 @@ def first_pass(source_text: str):
         elif opcode == '.STRING':
             m = re.search(r'"(.*?)"', s)
             if not m:
-                print(f"[Line {lineno}] .STRING の書式が正しくありません: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".STRING の書式が正しくありません", ".STRING")
             encoded = m.group(1).encode('utf-8') + b'\x00'
             loc_counter += len(encoded)
         elif opcode == '.DEF':
             m = re.match(r'\.DEF\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+)$', s, re.IGNORECASE)
             if not m:
-                print(f"[Line {lineno}] .DEF の書式が正しくありません: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".DEF の書式が正しくありません", ".DEF")
             name, expr = m.group(1), m.group(2)
             try:
                 val = eval_expression(expr)
                 symbol_table[name] = val
             except Exception:
                 # 前方参照など未解決は保留
-                _deferred_defs.append((name, expr, lineno))
+                _deferred_defs.append((name, expr, lineno, raw))
         elif opcode == '.ADDR':
             expr = s.split(None,1)[1] if len(s.split(None,1))>1 else ''
             if not expr:
-                print(f"[Line {lineno}] .ADDR の引数がありません")
-                sys.exit(1)
+                error(lineno, raw, ".ADDR の引数がありません", ".ADDR")
             # 既知ラベルで評価を試み、失敗したらエラーで中止（前方参照禁止）
             try:
-                addr = eval_expression(expr)
+                addr = eval_expression(expr, lineno, raw)
             except Exception:
-                print(f"[Line {lineno}] .ADDR の式を評価できません（前方参照禁止）: {expr}")
-                sys.exit(1)
+                error(lineno, raw, f".ADDR の式を評価できません（前方参照禁止）: {expr}", expr)
             if addr < loc_counter:
-                print(f"[Line {lineno}] .ADDR が現在位置より小さい値を指定しています: 0x{addr:X} < 0x{loc_counter:X}")
-                sys.exit(1)
+                error(lineno, raw, f".ADDR が現在位置より小さい値を指定しています: 0x{addr:X} < 0x{loc_counter:X}", expr)
             loc_counter = addr
         else:
             # 命令はすべて 4 バイト
@@ -141,20 +225,20 @@ def second_pass(source_text: str):
         while unresolved and progress:
             progress = False
             next_round = []
-            for name, expr, lineno in unresolved:
+            for name, expr, lineno, raw in unresolved:
                 try:
                     val = eval_expression(expr)
                     symbol_table[name] = val
                     progress = True
                 except Exception:
-                    next_round.append((name, expr, lineno))
+                    next_round.append((name, expr, lineno, raw))
             unresolved = next_round
         if unresolved:
             # ここで解けないものは依存が循環しているか、未定義シンボル
-            names = ', '.join(n for n, _, _ in unresolved)
-            detail = '; '.join(f"Line {ln}:{ex}" for n, ex, ln in unresolved)
-            print(f"[Error] 未解決の .DEF が残っています: {names}")
-            print(f"        詳細: {detail}")
+            names = ', '.join(n for n, _, _, _ in unresolved)
+            print(f"{source_name}: error: 未解決の .DEF が残っています: {names}", file=sys.stderr)
+            for _, expr, lineno, raw in unresolved:
+                print_source_error(lineno, raw, f".DEF の式を評価できません: {expr}", expr)
             sys.exit(1)
 
     lines = source_text.splitlines()
@@ -178,6 +262,8 @@ def second_pass(source_text: str):
         # ===== 命令のエンコード =====
         # タイプ0
         if opcode in type0_opdic:
+            parts = split_operands(s)
+            require_operand_count(parts, 0, lineno, raw)
             op_code = type0_opdic[opcode]
             instruction = (0b0000 << 28) | (op_code << 24)
             binary_code.extend(instruction.to_bytes(4, 'big'))
@@ -185,23 +271,21 @@ def second_pass(source_text: str):
 
         # タイプ1（単一レジスタ or 条件分岐 with レジスタ）
         elif opcode in type1_opdic:
-            parts = [p.strip() for p in re.split(r'[, \t\[\]]+', s)]
+            parts = split_operands(s)
+            require_operand_count(parts, 1, lineno, raw)
             op_code = type1_opdic[opcode]
-            rd = parts[1].upper() if len(parts) > 1 else 'R0'
-            if rd not in registers_dic:
-                print(f"[Line {lineno}] レジスタ名が不正です: {rd}")
-                sys.exit(1)
-            rd_code = registers_dic[rd]
+            rd_code = register_code(parts[1], lineno, raw)
             instruction = (0b0001 << 28) | (op_code << 24) | (rd_code << 20)
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
 
         # タイプ2（レジスタ間）
         elif opcode in type2_opdic:
-            parts = [p.strip() for p in re.split(r'[, \t\[\]]+', s)]
+            parts = split_operands(s)
+            require_operand_count(parts, 2, lineno, raw)
             op_code = type2_opdic[opcode]
-            rd, rs = parts[1].upper(), parts[2].upper()
-            rd_code, rs_code = registers_dic[rd], registers_dic[rs]
+            rd_code = register_code(parts[1], lineno, raw)
+            rs_code = register_code(parts[2], lineno, raw)
             instruction = (0b0010 << 28) | (op_code << 24) | (rd_code << 20) | (rs_code << 16)
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
@@ -209,74 +293,75 @@ def second_pass(source_text: str):
         # タイプ3（メモリ—レジスタ間: [Rs]）
         elif opcode in type3_opdic:
             # 例: LDB R1, [R2]
-            m = re.match(r'([A-Za-z]+)\s+([A-Za-z0-9]+)\s*,\s*\[([A-Za-z0-9]+)\]', s)
+            m = re.match(r'([A-Za-z]+)\s+([A-Za-z0-9]+)\s*,\s*\[([A-Za-z0-9]+)\]\s*$', s)
             if not m:
-                print(f"[Line {lineno}] メモリアクセス書式が不正です: {s}")
-                sys.exit(1)
+                error(lineno, raw, "メモリアクセス書式が不正です", opcode)
             op_code = type3_opdic[opcode]
             rd, rs = m.group(2).upper(), m.group(3).upper()
-            rd_code, rs_code = registers_dic[rd], registers_dic[rs]
+            rd_code = register_code(rd, lineno, raw)
+            rs_code = register_code(rs, lineno, raw)
             instruction = (0b0011 << 28) | (op_code << 24) | (rd_code << 20) | (rs_code << 16)
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
 
         # タイプ4（即値）
         elif opcode in type4_opdic:
-            parts = [p.strip() for p in re.split(r'[, \t\[\]]+', s)]
             op_code = type4_opdic[opcode]
-            rd = parts[1].upper()
-            rd_code = registers_dic[rd]
-            imm = eval_expression(' '.join(parts[2:]))
-            instruction = (0b0100 << 28) | (op_code << 24) | (rd_code << 20) | (int(imm) & 0xFFFFF)
+            rd, expr = parse_register_expression(s, lineno, raw, opcode)
+            rd_code = register_code(rd, lineno, raw)
+            imm = eval_expression(expr, lineno, raw)
+            imm20 = checked_imm20(imm, lineno, raw, expr)
+            instruction = (0b0100 << 28) | (op_code << 24) | (rd_code << 20) | imm20
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
 
         # タイプ5（絶対アドレス）
         elif opcode in type5_opdic:
-            parts = [p.strip() for p in re.split(r'[, \t\[\]]+', s)]
             op_code = type5_opdic[opcode]
-            rd = parts[1].upper()
-            rd_code = registers_dic[rd]
-            imm = eval_expression(' '.join(parts[2:]))
-            instruction = (0b0101 << 28) | (op_code << 24) | (rd_code << 20) | (int(imm) & 0xFFFFF)
+            rd, expr = parse_register_expression(s, lineno, raw, opcode)
+            rd_code = register_code(rd, lineno, raw)
+            imm = eval_expression(expr, lineno, raw)
+            imm20 = checked_imm20(imm, lineno, raw, expr)
+            instruction = (0b0101 << 28) | (op_code << 24) | (rd_code << 20) | imm20
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
 
         # タイプ6（即値のみ：SYSCALL / 即値分岐など）
         elif opcode in type6_opdic:
-            parts = [p.strip() for p in re.split(r'[, \t\[\]]+', s)]
             op_code = type6_opdic[opcode]
-            imm = eval_expression(' '.join(parts[1:]))
-            instruction = (0b0110 << 28) | (op_code << 24) | (int(imm) & 0xFFFFF)
+            expr = parse_expression_operand(s, lineno, raw, opcode)
+            imm = eval_expression(expr, lineno, raw)
+            imm20 = checked_imm20(imm, lineno, raw, expr)
+            instruction = (0b0110 << 28) | (op_code << 24) | imm20
             binary_code.extend(instruction.to_bytes(4, 'big'))
             loc_counter += instruction_size
 
         # ===== ディレクティブ =====
         elif opcode == '.DWORD':
-            value = eval_expression(s.split(None,1)[1])
+            expr = require_directive_expr(s, lineno, raw, ".DWORD")
+            value = eval_expression(expr, lineno, raw)
             try:
-                binary_code.extend(int(value).to_bytes(4, 'big', signed=False))
+                binary_code.extend(checked_int(value, lineno, raw, expr).to_bytes(4, 'big', signed=False))
             except OverflowError:
-                print(f"[Line {lineno}] .DWORD の値が大き過ぎます: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".DWORD の値が大き過ぎます", ".DWORD")
             loc_counter += 4
 
         elif opcode == '.WORD':
-            value = eval_expression(s.split(None,1)[1])
+            expr = require_directive_expr(s, lineno, raw, ".WORD")
+            value = eval_expression(expr, lineno, raw)
             try:
-                binary_code.extend(int(value).to_bytes(2, 'big', signed=False))
+                binary_code.extend(checked_int(value, lineno, raw, expr).to_bytes(2, 'big', signed=False))
             except OverflowError:
-                print(f"[Line {lineno}] .WORD の値が大き過ぎます: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".WORD の値が大き過ぎます", ".WORD")
             loc_counter += 2
 
         elif opcode == '.BYTE':
-            value = eval_expression(s.split(None,1)[1])
+            expr = require_directive_expr(s, lineno, raw, ".BYTE")
+            value = eval_expression(expr, lineno, raw)
             try:
-                binary_code.extend(int(value).to_bytes(1, 'big', signed=False))
+                binary_code.extend(checked_int(value, lineno, raw, expr).to_bytes(1, 'big', signed=False))
             except OverflowError:
-                print(f"[Line {lineno}] .BYTE の値が大き過ぎます: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".BYTE の値が大き過ぎます", ".BYTE")
             loc_counter += 1
 
         elif opcode == '.DEF':
@@ -286,8 +371,7 @@ def second_pass(source_text: str):
         elif opcode == '.STRING':
             m = re.search(r'"(.*?)"', s)
             if not m:
-                print(f"[Line {lineno}] .STRING の書式が正しくありません: {s}")
-                sys.exit(1)
+                error(lineno, raw, ".STRING の書式が正しくありません", ".STRING")
             encoded = m.group(1).encode('utf-8') + b'\x00'
             binary_code.extend(encoded)
             loc_counter += len(encoded)
@@ -295,26 +379,24 @@ def second_pass(source_text: str):
         elif opcode == '.ADDR':
             expr = s.split(None,1)[1] if len(s.split(None,1))>1 else ''
             if not expr:
-                print(f"[Line {lineno}] .ADDR の引数がありません")
-                sys.exit(1)
+                error(lineno, raw, ".ADDR の引数がありません", ".ADDR")
             try:
-                value = eval_expression(expr)
+                value = eval_expression(expr, lineno, raw)
             except Exception:
-                print(f"[Line {lineno}] .ADDR の式を評価できません（前方参照禁止）: {expr}")
-                sys.exit(1)
+                error(lineno, raw, f".ADDR の式を評価できません（前方参照禁止）: {expr}", expr)
             if value < loc_counter:
-                print(f"[Line {lineno}] .ADDR が現在位置より小さい値を指定しています: 0x{value:X} < 0x{loc_counter:X}")
-                sys.exit(1)
+                error(lineno, raw, f".ADDR が現在位置より小さい値を指定しています: 0x{value:X} < 0x{loc_counter:X}", expr)
             # 前詰め：0でパディング
             for _ in range(loc_counter, int(value)):
                 binary_code.append(0)
             loc_counter = int(value)
 
         else:
-            print(f"[Line {lineno}] 不明な命令/ディレクティブです: {s}")
-            sys.exit(1)
+            error(lineno, raw, f"不明な命令/ディレクティブです: {opcode}", opcode)
 
-def assemble(source_code: str, filename: str):
+def assemble(source_code: str, filename: str, input_name: str = '<input>'):
+    global source_name
+    source_name = input_name
     first_pass(source_code)
     second_pass(source_code)
     with open(filename, 'wb') as f:
@@ -337,4 +419,4 @@ if __name__ == '__main__':
     with open(sourcefile, 'r', encoding='utf-8') as f:
         source_code = f.read()
 
-    assemble(source_code, outputfile)
+    assemble(source_code, outputfile, sourcefile)
