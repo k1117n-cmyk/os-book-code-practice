@@ -1,11 +1,47 @@
-        .ADDR   0x80000
+        .DEF	RUNNABLE	0
+	.DEF	WAITING		1
+	.DEF	TO_STACK_BTM 0xFF000
+	.DEF	T4_STACK_BTM 0xD8000
+
+	.ADDR   0x80000
+; Task4 Setup
+	MOVI	SP, T4_STACK_BTM
+	MOVI	R0, idle_loop
+	PUSH	R0		;PC
+	MOVI	R0, 0x4000
+	MULI	R0, 0x10000
+	PUSH	R0		;CR
+	MOVI	R0, 0		;dummy data
+	PUSH	R0		;R0
+	PUSH	R0		;R1
+	PUSH	R0		;R2
+	PUSH	R0		;R3
+	PUSH	R0		;R4
+	PUSH	R0		;R5
+	PUSH	R0		;R6
+	PUSH	R0		;R7
+	PUSH	R0		;R8
+	PUSH	R0		;R9
+	PUSH	R0		;PT
+	MOVI	R0, vector_table
+	PUSH	R0		;VT
+	STDI	SP, [_t4_sp]
+; Start Task0
+	MOVI	SP, TO_STACK_BTM
+	STDI	SP, [_t0_sp]
+	MOVI	R0, 0
+	STBI	R0, [current_task]
+	JPI	os_start
+idle_loop:
+	JPI	idle_loop
+os_start:
 	SYSCALL 10
 	STDI	R8, [basetime]
 	MOVI	TP, 0
 	MOVI	VT, vector_table
 	EI
-        MOVI    R8, start_message
-        SYSCALL 1
+	MOVI	R8, start_message
+	SYSCALL	1
 cmdloop:
         MOVI    R0, 0
         MOVI    R1, keybuffer
@@ -107,9 +143,71 @@ do_date:
 ; Handler
 int_timer:
 	INC	TP
+_sleep_proc:
+	PUSH	R0
+	LDWI	R0, [_t0_sleep_ticks]
+	SBTI	R0, 0
+	JPZI	_sleep_proc_end
+	DEC	R0
+	STWI	R0, [_t0_sleep_ticks]
+	SBTI	R0, 0
+	JPNZI	_sleep_proc_end
+	MOVI	R0, RUNNABLE
+	STBI	R0, [_t0_status]
+_sleep_proc_end:
+	POP	R0
+_task_switch:
+	PUSH	R0
+	PUSH	R1
+	PUSH	R2
+	PUSH	R3
+	PUSH	R4
+	PUSH	R5
+	PUSH	R6
+	PUSH	R7
+	PUSH	R8
+	PUSH	R9
+	PUSH	PT
+	PUSH	VT
+	LDBI	R0, [current_task]
+	SBTI	R0, 4
+	JPZI	_c4
+_c0:
+	LDBI	R0, [_t0_status]
+	SBTI	R0, RUNNABLE
+	JPZI	_int_timer_end
+	JPI	_switch_t4
+_c4:
+	LDBI	R0, [_t0_status]
+	SBTI	R0, RUNNABLE
+	JPZI	_switch_t0
+	JPI	_int_timer_end
+_switch_t0:
+	MOVI	R0, 0
+	STBI	R0, [current_task]
+	STDI	SP, [_t4_sp]
+	LDDI	SP, [_t0_sp]
+	JPI	_int_timer_end
+_switch_t4:
+	MOVI	R0, 4
+	STBI	R0, [current_task]
+	STDI	SP, [_t0_sp]
+	LDDI	SP, [_t4_sp]
+_int_timer_end:
+	POP	VT
+	POP	PT
+	POP	R9
+	POP	R8
+	POP	R7
+	POP	R6
+	POP	R5
+	POP	R4
+	POP	R3
+	POP	R2
+	POP	R1
+	POP	R0
 int_other:
 	IRET
-
 ; DATA
 start_message:
         .STRING "Welcome to Simple OS!\n"
@@ -133,6 +231,24 @@ basetime:
 	.DWORD 0
 end_message:
         .STRING "bye.\n\n"
+;Task DATA
+current_task:
+	.BYTE	0
+task_status:
+_t0_status:
+	.BYTE	RUNNABLE
+_t4_status:
+	.BYTE	WAITING
+task_sleep_ticks:
+_t0_sleep_ticks:
+	.WORD	0
+_t4_sleep_ticks:
+	.WORD	0
+task_stack_pointer:
+_t0_sp:
+	.DWORD	0
+_t4_sp:
+	.DWORD	0
 
 ; System Function
         .ADDR   0xB0000
@@ -219,6 +335,24 @@ _get_nth_token_end:
 	POP	R1
 	POP	R0
 	MOVI	R8, tokenbuffer
+	RET
+	.ADDR	0xB2000
+sleep:
+	MULI	R8, 10
+	STWI	R8, [_t0_sleep_ticks]
+	MOVI	R8, WAITING
+	STBI	R8, [_t0_status]
+	MOVI	R8, _sleep_end
+	PUSH	R8	; PC
+	PUSH	CR
+	DI
+	JPI	_task_switch
+_sleep_end:
+	RET
+_wait_loop:
+	SBT	TP, R0
+	JPUI	_wait_loop
+	POP	R0
 	RET
 
 ; Buffer

@@ -13,6 +13,7 @@
 - オペランド不足、オペランド過多、不正レジスタ、メモリアクセス書式不正をアセンブラのエラーとして表示するようにしました。
 - `.BYTE` / `.WORD` / `.DWORD` の引数不足を検出するようにしました。
 - 即値命令の20ビット範囲外を検出するようにしました。
+- `STDI R8, [basetime]` のような `[label]` 表記は、作者版 `asm.py` と同じく受け付けるようにしました。
 - 式評価時の `eval()` は、`__builtins__` を空にして実行するようにしました。
 
 ### `asmx.py`
@@ -39,8 +40,7 @@ Wrote os.bin (790529 bytes)
 
 - `_get__nth_token_end` のようにアンダースコアが1つ多いラベル参照を、`_get_nth_token_end` に修正しました。
 - tick 数カウント用の割り込み処理を追加した際、`vector_table` を途中で `0xFF800` に置くと後続の `.ADDR 0xB0000` へ戻れないため、割り込みベクタテーブルをソース末尾側へ移動しました。
-- `date` コマンド追加時、現在の `asm.py` では `STDI R8, [basetime]` ではなく `STDI R8, basetime` と書く必要があることを確認しました。
-- 書籍ページ内に見当たらない `do_date:` 本体として、`LDDI R8, basetime`、`SYSCALL 11`、`JPI cmdloop` を追加しました。
+- 書籍ページ内に見当たらない `do_date:` 本体として、`LDDI R8, [basetime]`、`SYSCALL 11`、`JPI cmdloop` を追加しました。
 
 確認したエラー表示例:
 

@@ -1,0 +1,25 @@
+	.DEF	sleep 0xB2000
+
+	MOVI	R8, msg1
+	SYSCALL	1
+	MOVI	R8, 1
+	CALLI	sleep
+
+	MOVI	R8, msg2
+	SYSCALL	1
+	MOVI	R8, 5
+	CALLI	sleep
+
+	MOVI	R8, msg3
+	SYSCALL	1
+	MOVI	R8, 10
+	CALLI	sleep
+
+	RET
+msg1:
+	.STRING "WAITING 1s\n"
+msg2:
+	.STRING "WAITING 5s\n"
+msg3:
+	.STRING "WAITING 10s\n"
+
