@@ -1,0 +1,15 @@
+## 基本コマンド
+アセンブリを出力する。
+cc -S drill.c
+
+最適化を抑えて見る。
+cc -O0 -S drill.c
+
+最適化した結果を見る。
+cc -O2 -S drill.c
+
+実行ファイルを作る。
+cc drill.c -o drill
+
+macOSで逆アセンブルする。
+otool -tvV drill
