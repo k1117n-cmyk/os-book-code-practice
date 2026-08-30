@@ -45,6 +45,93 @@ xxd -g 1 hello.bin
 rg 'SYSCALL|PC|SP|CR|VT|PT' emu.py os.asm
 ```
 
+## デバッグ用コマンド
+
+`os.asm` を変更したあと、まずアセンブルできるか確認する。
+
+```sh
+python3 asm.py os.asm
+```
+
+`_task_switch` まわりのラベルが重複していないか確認する。
+
+```sh
+rg -n "^(_task_switch|_select_next|_int_timer_end|int_other):" os.asm
+```
+
+正常なら、それぞれ1回ずつだけ表示される。
+
+```text
+278:_task_switch:
+315:_select_next:
+322:_int_timer_end:
+335:int_other:
+```
+
+同じラベルが2回以上出る場合は、古いコードを消し忘れている可能性がある。
+
+行番号付きで `os.asm` の一部を見る。
+
+```sh
+nl -ba os.asm | sed -n '250,350p'
+```
+
+直近で編集した差分を見る。
+
+```sh
+git diff -- os.asm
+```
+
+作業ツリー全体で変更されたファイルを確認する。
+
+```sh
+git status --short
+```
+
+`PUSH` と `POP` の対応を確認する。
+
+```sh
+rg -n "PUSH|POP|IRET|RET|_task_switch|_int_timer_end" os.asm
+```
+
+タスク関連のデータ定義を確認する。
+
+```sh
+rg -n "current_task|task_status|task_sleep_ticks|task_stack_pointer|_t[0-4]_" os.asm
+```
+
+割り込みベクタとハンドラ名を確認する。
+
+```sh
+rg -n "vector_table|int_timer|int_other|int_pagefault|VT|IRET" os.asm emu.py
+```
+
+`SYSCALL` の番号と処理内容を確認する。
+
+```sh
+rg -n "SYSCALL|syscall_num ==|do_syscall" os.asm emu.py
+```
+
+生成された `os.bin` のサイズを確認する。
+
+```sh
+ls -lh os.bin
+```
+
+バイナリの先頭を確認する。
+
+```sh
+xxd -g 1 -l 128 os.bin
+```
+
+Simple OS を起動して、仮想コンソールを確認する。
+
+```sh
+python3 emu.py
+```
+
+起動後は、`Ctrl+]` に続いて `0` から `3` を押して仮想コンソールを切り替える。
+
 ## Drill 1: Hello, World! の機械語を見る
 
 対象。
