@@ -111,6 +111,7 @@ os_start:
 	MOVI	PT, TO_PT
 	MOVI	R0, 0xC000
 	MULI	R0, 0x10000
+	MOV	CR, R0
 	MOVI	R8, start_message
 	SYSCALL	1
 cmdloop:
@@ -323,6 +324,12 @@ _int_timer_end:
 	POP	R0
 int_other:
 	IRET
+int_pagefault:
+	MOVI	R8, pagefault_msg
+	SYSCALL 1
+	HALT
+pagefault_msg:
+	.STRING "Page Fault has occurred.\n"
 ; DATA
 start_message:
         .STRING "Welcome to Simple OS!\n"
@@ -530,4 +537,4 @@ vector_table:
 	.DWORD	int_timer
 	.DWORD	int_other
 	.DWORD	int_other
-	.DWORD	int_other
+	.DWORD	int_pagefault
