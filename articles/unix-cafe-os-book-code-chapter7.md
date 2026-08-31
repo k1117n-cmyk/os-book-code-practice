@@ -1,0 +1,279 @@
+# 「いちばんやさしい！OS自作超入門」第7章でつまずいたこと
+
+書籍「いちばんやさしい！OS自作超入門」を読みながら、`os_book_code` の第7章を進めます。
+
+第7章では、タスクごとに仮想メモリを使えるようにし、タスク1からタスク3を同じ仮想アドレス上で動かします。
+
+この記事では、第7章を進める中でつまずいた点と、手元で確認した対応を整理します。
+
+## `print_t1_message` から `print_t3_message` の参照も削除する
+
+第7章で仮想メモリを有効にするところでは、`Task DATA` を変更し、これまでタスクごとの表示に使っていた次のラベルを削除します。
+
+```asm
+print_t1_message:
+print_t2_message:
+print_t3_message:
+```
+
+ここで注意が必要なのは、`Task DATA` 側のラベル定義を削除するだけでは足りない点です。
+
+ファイル前半の `Task1 Setup` から `Task3 Setup` にも、初期スタックへ積む `PC` としてこれらのラベルを参照する行が残っています。
+
+```asm
+; Task1 Setup
+        MOVI    SP, T1_STACK_BTM
+        MOVI    R0, print_t1_message
+        PUSH    R0              ; PC
+
+; Task2 Setup
+        MOVI    SP, T2_STACK_BTM
+        MOVI    R0, print_t2_message
+        PUSH    R0              ; PC
+
+; Task3 Setup
+        MOVI    SP, T3_STACK_BTM
+        MOVI    R0, print_t3_message
+        PUSH    R0              ; PC
+```
+
+`Task DATA` からラベル定義を消した状態で、これらの参照だけが残っていると、`asmx.py` の実行時に未定義シンボルのエラーになります。
+
+```sh
+python asmx.py os.asm
+```
+
+```text
+os.asm:14: error: undefined symbol 'print_t1_message'
+        MOVI    R0, print_t1_message
+                    ^^^^^^^^^^^^^^^^
+```
+
+`print_t1_message` の行だけを消して再実行すると、次は `print_t2_message`、その次は `print_t3_message` が同じ理由でエラーになります。
+
+```text
+os.asm:36: error: undefined symbol 'print_t2_message'
+os.asm:58: error: undefined symbol 'print_t3_message'
+```
+
+そのため、仮想メモリ用のタスク初期化に変更するタイミングで、`Task1 Setup` から `Task3 Setup` にある次の3行も削除します。
+
+```diff
+ ; Task1 Setup
+         MOVI    SP, T1_STACK_BTM
+-        MOVI    R0, print_t1_message
+         PUSH    R0              ; PC
+
+ ; Task2 Setup
+         MOVI    SP, T2_STACK_BTM
+-        MOVI    R0, print_t2_message
+         PUSH    R0              ; PC
+
+ ; Task3 Setup
+         MOVI    SP, T3_STACK_BTM
+-        MOVI    R0, print_t3_message
+         PUSH    R0              ; PC
+```
+
+修正後にもう一度アセンブルします。
+
+```sh
+python asmx.py os.asm
+```
+
+次のように `os.bin` が出力されれば、この未定義シンボルは解消しています。
+
+```text
+Wrote os.bin (1046544 bytes)
+```
+
+## エミュレータ側にもページテーブルを用意する
+
+第7章では、OS側で `PT` レジスタを使い、タスクごとのページテーブルを参照するようになります。
+
+ただし、`emu.py` 側でページテーブルの置き場所が初期化されていないと、タスクを切り替えても期待した論理アドレスから物理メモリへ変換されません。
+
+そこで、タスクごとのページテーブルアドレスを固定値に変更しました。
+
+```diff
+-task_pt_addr = [ 0, 0, 0, 0 ]
++task_pt_addr = [ 0xFFF00, 0xFFF10, 0xFFF20, 0xFFF30 ]
+```
+
+さらに、エミュレータ起動時に各ページテーブルの内容を書き込むようにします。
+
+本の最初のサンプルでは、タスク0のページテーブルは、論理ページ `0` から `15` がそのまま物理ページ `0` から `15` に対応する設定です。
+
+```text
+論理ページ 0 -> 物理ページ 0
+論理ページ 1 -> 物理ページ 1
+論理ページ 2 -> 物理ページ 2
+...
+論理ページ 15 -> 物理ページ 15
+```
+
+一方で、タスク1からタスク3は、それぞれのプログラムを論理アドレス `0x00000` から実行できるように、論理ページ `0` だけを別々の物理ページに対応させます。
+
+```text
+タスク1: 論理ページ 0 -> 物理ページ 1
+タスク2: 論理ページ 0 -> 物理ページ 2
+タスク3: 論理ページ 0 -> 物理ページ 3
+```
+
+これにより、タスク1、タスク2、タスク3は、どれも自分から見ると `0x00000` 番地で動いているように見えます。しかし実際の物理メモリ上では、それぞれ `0x10000`、`0x20000`、`0x30000` に分かれて配置されます。
+
+ページテーブル内の `0xFF` は、その論理ページを使えないようにする印です。MMU が有効な状態で `0xFF` のページにアクセスすると、ページフォルトとして扱われます。
+
+書籍の流れでは、まずこの設定で論理アドレス `0x00000` と物理アドレス `0x00000` をダンプします。そのあとで、タスク0の論理ページ `3` を物理ページ `7` に対応させるようにページテーブルを書き換えて確認します。
+
+次のコードは、その書き換え後の確認用コードです。
+
+```python
+# ページテーブルを設定
+t0_pt = task_pt_addr[0]
+t1_pt = task_pt_addr[1]
+t2_pt = task_pt_addr[2]
+t3_pt = task_pt_addr[3]
+memory[t0_pt:t0_pt + 0x10] = [0x00, 0x01, 0x02, 0x07, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t1_pt:t1_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t2_pt:t2_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t3_pt:t3_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+```
+
+この配列は、左から順に論理ページ `0`、`1`、`2`、`3` ... の対応先を表します。
+
+そのため、タスク0の4番目の値を `0x07` にすると、タスク0の論理ページ `3` が物理ページ `7` に対応します。
+
+```python
+memory[t0_pt:t0_pt + 0x10] = [
+    0x00, 0x01, 0x02, 0x07,
+    0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B,
+    0x0C, 0x0D, 0x0E, 0x0F,
+]
+```
+
+つまり、タスク0で MMU が有効な状態では、論理アドレス `0x30000` が物理アドレス `0x70000` に変換されます。
+
+動作確認用に、物理アドレス `0x70000` に分かりやすい値も入れておきました。
+
+```python
+memory[0x70000:0x70004] = [0x12, 0x34, 0x56, 0x78]
+```
+
+## `dump.asm` で論理アドレスと物理アドレスを比較する
+
+ページテーブルによる変換を確認するため、`dump.asm` を追加しました。
+
+本の最初の確認では、論理アドレスと物理アドレスの両方に `0x00000` を指定します。
+
+```asm
+	MOVI	R8, lmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x00000	; 論理アドレス
+	MOVI	R9, 1
+	SYSCALL	40
+
+	MOVI	R8, pmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x00000	; 物理アドレス
+	MOVI	R9, 0
+	SYSCALL	40
+
+	RET
+```
+
+同じ `0x00000` でも、`R9` の値によって読み方が変わります。
+
+```text
+R9 = 1: 0x00000 を論理アドレスとして読む
+R9 = 0: 0x00000 を物理アドレスとして読む
+```
+
+タスク0の論理ページ `0` が物理ページ `0` に対応している状態では、どちらも最終的には物理アドレス `0x00000` を読みます。
+
+```text
+論理アドレス 0x00000
+  -> 論理ページ 0
+  -> 物理ページ 0
+  -> 物理アドレス 0x00000
+```
+
+今回の実装では、`exec dump.bin` で実行するプログラムは物理メモリの先頭に読み込まれます。
+
+```python
+memory[0:len(prog)] = prog
+```
+
+そのため、物理アドレス `0x00000` をダンプすると、空のメモリではなく、`dump.bin` 自身の機械語や文字列が表示されます。ダンプの中に次のような文字列が見えるのは、`dump.asm` に書いた文字列データが `dump.bin` の中に含まれているためです。
+
+```text
+[Logical Memory Dump]
+[Physical Memory Dump]
+```
+
+次に、マッピングを書き換えた状態を確認するため、`dump.asm` の対象アドレスも変更します。
+
+```asm
+	MOVI	R8, lmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x30000	; 論理アドレス
+	MOVI	R9, 1
+	SYSCALL	40
+
+	MOVI	R8, pmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x70000	; 物理アドレス
+	MOVI	R9, 0
+	SYSCALL	40
+
+	RET
+```
+
+`SYSCALL 40` は、`R8` に指定したアドレスからメモリダンプを表示します。
+`R9` に `1` を入れると論理アドレスとして読み、`0` を入れると物理アドレスとして読みます。
+
+```python
+elif syscall_num == 40:
+    start_addr = value1 & 0xFFFFF
+    flag_logical = value2 & 1
+    memdata = []
+    if flag_logical:
+        for i in range(256):
+            memdata +=  read_lmem(value1 + i, 1).to_bytes()
+    else:
+        memdata = memory[value1:value1+256]
+    hexdump(memdata, start_addr)
+```
+
+`dump.asm` をアセンブルして、`dir` の下に配置します。
+
+```sh
+python asmx.py dump.asm dir/dump.bin
+```
+
+```text
+Wrote dump.bin (93 bytes)
+```
+
+OSを起動して `dump.bin` を実行します。
+
+```text
+> exec dump.bin
+```
+
+論理アドレス `0x30000` の先頭に、物理アドレス `0x70000` に入れた `12 34 56 78` が見えれば、ページテーブルによるアドレス変換を確認できます。
+
+```text
+[Logical Memory Dump]
+30000  12 34 56 78 ...
+
+[Physical Memory Dump]
+70000  12 34 56 78 ...
+```
+
+この実験では、物理ページ `0` ではなく物理ページ `7` に確認用データを置いているため、プログラム本体と混ざらず、変換結果を追いやすくなります。

@@ -6,11 +6,11 @@
 	.DEF	T2_STACK_BTM 0xE8000
 	.DEF	T3_STACK_BTM 0xE0000
 	.DEF	T4_STACK_BTM 0xD8000
+	.DEF	TO_PT	0xFFF00
 
 	.ADDR   0x80000
 ; Task1 Setup
 	MOVI	SP, T1_STACK_BTM
-	MOVI	R0, print_t1_message
 	PUSH	R0		;PC
 	MOVI	R0, 0x4000
 	MULI	R0, 0x10000
@@ -32,7 +32,6 @@
 	STDI	SP, [_t1_sp]
 ; Task2 Setup
 	MOVI	SP, T2_STACK_BTM
-	MOVI	R0, print_t2_message
 	PUSH	R0		;PC
 	MOVI	R0, 0x4000
 	MULI	R0, 0x10000
@@ -54,7 +53,6 @@
 	STDI	SP, [_t2_sp]
 ; Task3 Setup
 	MOVI	SP, T3_STACK_BTM
-	MOVI	R0, print_t3_message
 	PUSH	R0		;PC
 	MOVI	R0, 0x4000
 	MULI	R0, 0x10000
@@ -78,7 +76,7 @@
 	MOVI	SP, T4_STACK_BTM
 	MOVI	R0, idle_loop
 	PUSH	R0		;PC
-	MOVI	R0, 0x4000
+	MOVI	R0, 0xC000
 	MULI	R0, 0x10000
 	PUSH	R0		;CR
 	MOVI	R0, 0		;dummy data
@@ -92,6 +90,7 @@
 	PUSH	R0		;R7
 	PUSH	R0		;R8
 	PUSH	R0		;R9
+	MOVI	R0, TO_PT
 	PUSH	R0		;PT
 	MOVI	R0, vector_table
 	PUSH	R0		;VT
@@ -104,39 +103,14 @@
 	JPI	os_start
 idle_loop:
 	JPI	idle_loop
-print_t1_message:
-	MOVI	R8, t1_message
-	SYSCALL 1
-	MOVI	R8, WAITING
-	STBI	R8, [_t1_status]
-_t1_loop:
-	JPI	_t1_loop
-print_t2_message:
-	MOVI	R8, t2_message
-	SYSCALL 1
-	MOVI	R8, WAITING
-	STBI	R8, [_t2_status]
-_t2_loop:
-	JPI	_t2_loop
-print_t3_message:
-	MOVI	R8, t3_message
-	SYSCALL 1
-	MOVI	R8, WAITING
-	STBI	R8, [_t3_status]
-_t3_loop:
-	JPI	_t3_loop
-t1_message:
-	.STRING "This message was displayed by Task 1.\n"
-t2_message:
-	.STRING "This message was displayed by Task 2.\n"
-t3_message:
-	.STRING "This message was displayed by Task 3.\n"
 os_start:
 	SYSCALL 10
 	STDI	R8, [basetime]
 	MOVI	TP, 0
 	MOVI	VT, vector_table
-	EI
+	MOVI	PT, TO_PT
+	MOVI	R0, 0xC000
+	MULI	R0, 0x10000
 	MOVI	R8, start_message
 	SYSCALL	1
 cmdloop:
@@ -149,9 +123,7 @@ draw_cmdline:
         MOVI    R8, keybuffer
         SYSCALL 1
 keyloop:
-        SYSCALL 3
-        SBTI    R8, 0
-        JPZI    keyloop
+	CALLI	key_input
         SBTI    R8, 92
         JPZI    keyloop
         SBTI    R8, 8
@@ -242,16 +214,33 @@ int_timer:
 	INC	TP
 _sleep_proc:
 	PUSH	R0
-	LDWI	R0, [_t0_sleep_ticks]
+	PUSH	R1
+	PUSH	R2
+	PUSH	R3
+	MOVI	R1, task_sleep_ticks
+	MOVI	R2, task_status
+	MOVI	R3, 0
+_sleep_proc_loop:
+	LDW	R0, [R1]
 	SBTI	R0, 0
-	JPZI	_sleep_proc_end
+	JPZI	_next_task
 	DEC	R0
-	STWI	R0, [_t0_sleep_ticks]
+	STW	R0, [R1]
 	SBTI	R0, 0
-	JPNZI	_sleep_proc_end
+	JPNZI	_next_task
 	MOVI	R0, RUNNABLE
-	STBI	R0, [_t0_status]
+	STB	R0, [R2]
+_next_task:
+	INC	R3
+	SBTI	R3, 4
+	JPZI	_sleep_proc_end
+	ADDI	R1, 2
+	INC	R2
+	JPI	_sleep_proc_loop
 _sleep_proc_end:
+	POP	R3
+	POP	R2
+	POP	R1
 	POP	R0
 _timeslice_proc:
 	PUSH	R0
@@ -366,11 +355,11 @@ task_status:
 _t0_status:
 	.BYTE	RUNNABLE
 _t1_status:
-	.BYTE	RUNNABLE
+	.BYTE	WAITING	
 _t2_status:
-	.BYTE	RUNNABLE
+	.BYTE	WAITING	
 _t3_status:
-	.BYTE	RUNNABLE
+	.BYTE	WAITING	
 _t4_status:
 	.BYTE	WAITING
 task_sleep_ticks:
@@ -484,10 +473,19 @@ _get_nth_token_end:
 	RET
 	.ADDR	0xB2000
 sleep:
+	PUSH	R0
+	PUSH	R1
+	LDBI	R0, [current_task]
+	MOV	R1, R0
+	MULI	R1, 2
+	ADDI	R1, task_sleep_ticks
 	MULI	R8, 10
-	STWI	R8, [_t0_sleep_ticks]
+	STW	R8, [R1]
+	ADDI	R0, task_status
 	MOVI	R8, WAITING
-	STBI	R8, [_t0_status]
+	STB	R8, [R0]
+	POP	R1
+	POP	R0
 	MOVI	R8, _sleep_end
 	PUSH	R8	; PC
 	PUSH	CR
@@ -500,7 +498,23 @@ _wait_loop:
 	JPUI	_wait_loop
 	POP	R0
 	RET
-
+	.ADDR	0xB3000
+key_input:
+	SYSCALL 3
+	SBTI	R8, 0
+	JPNZI	_got_key
+_do_yield:
+	MOVI	R8, _resume_point
+	PUSH	R8
+	PUSH	CR
+	DI
+	JPI	_task_switch
+_resume_point:
+	SYSCALL 3
+	SBTI	R8, 0
+	JPZI	_do_yield
+_got_key:
+	RET
 ; Buffer
         .ADDR   0xC0000
 keybuffer:
