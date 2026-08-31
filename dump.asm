@@ -8,7 +8,7 @@
 	MOVI	R8, pmem_msg
 	SYSCALL 1
 
-	MOVI	R8, 0x50000	;物理アドレス
+	MOVI	R8, 0x70000	;物理アドレス
 	MOVI	R9, 0
 	SYSCALL	40
 
