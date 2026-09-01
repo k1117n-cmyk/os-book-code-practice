@@ -39,7 +39,7 @@ memory = bytearray(1048576)
 mmu_flag = 0
 pagetable = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
 page_bases = [i << 16 for i in range(16)]  # 論理ページに対応する物理ページの先頭アドレスを保持
-task_pt_addr = [ 0xFFF00, 0xFFF10, 0xFFF20, 0xFFF30 ]
+task_pt_addr = [ 0, 0, 0, 0 ]
 pagefault_laddr = 0
 
 # ====== 仮想コンソール設定 ======
@@ -301,7 +301,7 @@ def do_syscall(syscall_num):
 
             # そのVCの入力キューから読み込む
             try:
-                ch = key_queues[vc_idx].get(timeout=0.005)
+                ch = key_queues[vc_idx].get(timeout=0.05)
             except Empty:
                 ch = '\0'
             registers['R8'] = ord(ch) & 0x7F
@@ -672,19 +672,6 @@ if __name__ == '__main__':
 
     key_proc = mp.Process(target=keyboard_listener, args=(fd, key_queues, vc_switch_queue, active_vc_shared))
     key_proc.start()
-
-    #ページテーブルを設定
-    t0_pt = task_pt_addr[0]
-    t1_pt = task_pt_addr[1]
-    t2_pt = task_pt_addr[2]
-    t3_pt = task_pt_addr[3]
-    memory[t0_pt:t0_pt + 0x10] = [0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
-    memory[t1_pt:t1_pt + 0x10] = [0x01, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
-    memory[t2_pt:t2_pt + 0x10] = [0x02, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
-    memory[t3_pt:t3_pt + 0x10] = [0x03, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
-
-    memory[0x70000:0x70004] = [0x12, 0x34, 0x56, 0x78]
-
 
     # CPUを実行
     try:
