@@ -9,7 +9,7 @@
 - `os.asm`
   - 第4章の完成版として使う `os.asm` です。
   - `reg`、`ls`、`exec`、tick カウント、`date` コマンドの追加を含みます。
-  - 書籍の図24にある `STDI R8, [basetime]` は、現在のアセンブラに合わせて `STDI R8, basetime` にしています。
+  - 書籍および作者リポジトリと同じく、`STDI R8, [basetime]` の `[label]` 表記を使います。
   - 図24から図26の範囲では見当たらない `do_date:` 本体も追加しています。
 
 - `asm.py`
@@ -78,6 +78,6 @@ date
 
 ## Notes
 
-生成済みの `os.bin` や `pi.bin` は含めていません。
+生成済みの `os.bin` は含めています。
 
 読者の環境で `asm.py` または `asmx.py` を使って生成してください。

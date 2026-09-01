@@ -1,0 +1,580 @@
+「いちばんやさしい！OS自作超入門」第3章まででつまずいたこと | UNIX Cafe
+<!-- wp:image {"id":53858,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large"><img src="https://pc-fan.net/wp/wp-content/uploads/2026/08/Firefly_Gemini-Flash_レトロな黒背景のUNIXターミナル画面に、Pythonで動くCPUエミュレータ、Simple-OSのプロンプト、hello.asm、pi.asm、HALTとRETのメモが-815240-800x446.webp" alt="「いちばんやさしい！OS自作超入門」第3章まででつまずいたこと | UNIX Cafe" class="wp-image-53858"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:paragraph -->
+<p>こんにちは、UNIX Cafe マスターのいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>先日、自作LC-3 VMのコードをGitHubに公開し、仮想マシン制作の連載がひと区切りつきました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この連載を通して、C言語のビット演算や配列を使いながら、「命令を読み込み、レジスタを更新し、メモリを読み書きする」というCPUの基本的な流れをかなり近くで見ることができたと思います。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただ、LC-3VMで学んだのはあくまで「ハードウェア（CPU）に近い部分」です。<br>ここからさらに一歩進んで、<strong>マルチタスクやメモリ管理といった「OS（オペレーティングシステム）の仕組み」</strong>を学びたくなりました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そこで、次なるステップとして選んだ教材が<strong>『いちばんやさしい！OS自作超入門』</strong>です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この本の素晴らしいところは、複雑な本物のCPU仕様に迷わされないよう、あえて「仮想CPU」を使ってOSの本質だけを学べる点です。「シンプルなCPUを相手にする」というアプローチは、まさに私たちがLC-3VMでやってきたことと同じ。これなら知識がそのまま活かせそうだとワクワクしています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この記事では、お目当ての「シングルタスクOSの開発」に入る前に、第三章までの準備段階で躓いたところを整理します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:pochipp/linkbox {"pid":53861,"isCount":true,"cvKey":"526ecfb4"} /-->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第3章まででつまずいたことを整理する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>「いちばんやさしい！OS自作超入門」を読みながら、GitHubで公開されている<code>os_book_code</code>を使って第3章まで進めてみました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>第3章までは、まだ本格的なOS開発というより、アセンブラ、CPUエミュレータ、簡単なアセンブリプログラムを動かすための準備が中心です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただ、書籍本文の手順と現在のGitHub最新版では、いくつか前提が違って見えるところがありました。特に<code>emu.py</code>の役割と、<code>HALT</code> / <code>RET</code>の違いで迷いやすいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この記事では、第3章まででつまずいた点と、その確認結果をまとめます。第4章から始まる「シングルタスクOSを開発」に入る前の準備メモです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">使用環境</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li>macOS</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>Python 3</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>GitHubリポジトリ: <a href="https://github.com/sueyasu/os_book_code" target="_blank" rel="noopener">https://github.com/sueyasu/os_book_code</a></li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice</a></li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>作業ディレクトリ: <code>os_book_code</code>ローカル側のディレクトリ名です。</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>この記事では、現在のGitHub最新版を手元に置いている前提で書きます。書籍本文とGitHub最新版のコードが、常に同じ段階を前提にしているとは限らない点に注意します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>本文中で確認している「現在のGitHub最新版」は著者公開の<code>sueyasu/os_book_code</code>を指し、<code>early.py</code>を使った単体実行の手順は、この記事用に用意した補助リポジトリ<code>k1117n-cmyk/os-book-code-practice</code>で試せるようにしています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第3章までの位置づけ</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第3章までの内容を大きく分けると、次のようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li>第1章: ソースコードを入手してサンプルを動かします</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>第2章: CPUの仕組みと基本的な考え方を確認します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>第3章: アセンブリ言語で簡単なプログラムを書きます</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>ここでは、OS本体を作る前に、アセンブリコードをバイナリに変換し、それをCPUエミュレータで実行する流れを確認しています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>GitHubで公開されている<code>asm.py</code>、<code>emu.py</code>と、書籍で前提としている<code>emu.py</code>の役割を分けておくと、後の章に進みやすくなります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第１章　開発環境を用意する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>最初はPythonの環境設定です。この書籍はPythonで書かれた32bit 仮想CPUの上で動くOSを開発しますので、最初に前提となる仮想CPUを動かすための、Pythonの環境を構築します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">venvのドットで迷う</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.12</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>書籍の環境構築では、仮想環境を作るコマンドとして次のような形が出てきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python3 -m venv .
+source bin/activate</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ここで指定している<code>.</code>は「現在のディレクトリ」を意味します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>つまり、このコマンドは「現在のディレクトリそのものを仮想環境にする」という指定です。<code>.venv/</code>というディレクトリを作る指定ではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>実行すると、カレントディレクトリ直下に次のようなファイルやディレクトリが作られます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>bin/
+include/
+lib/
+pyvenv.cfg</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>作業ディレクトリ直下に仮想環境の中身を置きたくない場合は、作成先のディレクトリ名を明示します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python3.12 -m venv .venv
+source .venv/bin/activate</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>python -m venv .</code>の<code>.</code>は、<code>.venv</code>の省略形ではありません。この点は最初に混乱しやすいところです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">1-4　ソースコードの入手とサンプルコードの実行</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">Wrote hello.binは正常なログ</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.14</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>書籍では、次のようなコマンドが出てきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asm.py hello.asm
+python emu.py hello.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>1行目を実行すると、次のようなログが表示されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Wrote hello.bin (28 bytes)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>これはエラーではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>python asm.py hello.asm</code>は、<code>hello.asm</code>を機械語のバイナリに変換するコマンドです。この段階では、プログラムはまだ実行されていません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>Wrote hello.bin (28 bytes)</code>は、<code>hello.asm</code>のアセンブルに成功し、<code>hello.bin</code>という28バイトのバイナリを書き出した、という正常な中間ログです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>その次のエミュレータ実行で、初めて<code>hello.bin</code>の中身がCPU上で実行されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">emu.py hello.binでSimple OSが起動する</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>現在のGitHub最新版を使っていると、書籍どおりに次を実行しても、期待した<code>Hello, World!</code>が表示されないことがあります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python emu.py hello.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>代わりに、次のような表示になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Welcome to Simple OS!
+&gt;</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>これは<code>hello.bin</code>が実行された結果ではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>現在のリポジトリ直下にある<code>emu.py</code>は、引数で渡した<code>hello.bin</code>を読む作りではなく、カレントディレクトリの<code>os.bin</code>を読み込んでSimple OSを起動する作りになっています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そのため、次のように引数を付けても、現在の<code>emu.py</code>では引数は使われません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python emu.py hello.bin
+python emu.py mul.bin
+python emu.py pi.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>どれも実際には<code>os.bin</code>のSimple OSが起動します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">hello.binを直接動かすにはearly.pyを使う</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>書籍序盤の<code>hello.bin</code>を単体プログラムとして直接実行したい場合は、初期章用の<code>emu.py</code>を使う必要があります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただ、現在の著者公開のリポジトリには、初期章用の<code>emu.py</code>は残っていませんので、代わりに自作の<code>early.py</code>を用意しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python3 asm.py asm_code/hello.asm
+python3 early.py asm_code/hello.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この場合は、書籍序盤の説明に近い形で、<code>hello.bin</code>が直接CPUエミュレータ上で実行されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>期待する出力は次のような形になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Hello, World!
+CPU halted.
+R0: 00000000
+R1: 00000000
+R2: 00000000
+R3: 00000000
+R4: 00000000
+R5: 00000000
+R6: 00000000
+R7: 00000000
+R8: 0000000C
+R9: 00000000
+TP: 00000000
+SP: 000FFFFF
+PC: 0000000C
+PT: 00000000
+VT: 00000000
+CR: 00000000</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>一方、<code>python emu.py</code>でSimple OSが起動している場合、<code>CPU halted.</code>とレジスタ一覧は<code>hello.bin</code>の実行結果として出ているわけではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Simple OSのプロンプトで<code>exit</code>を入力したときに、OSが終了して<code>CPU halted.</code>が表示されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Welcome to Simple OS!
+&gt; exit
+bye.
+
+CPU halted.
+R0: 00000004
+R1: 000C0004
+R2: 00000000
+R3: 00000000
+R4: 00000000
+R5: 00000000
+R6: 00000000
+R7: 00000000
+R8: 0008064E
+R9: 0008061C
+TP: 00000016
+SP: 000FF000
+PC: 000802CC
+PT: 000FFF00
+VT: 000FF800
+CR: C0000004</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この時に出力されるレジスタ一覧は、<code>os.bin</code>の実行結果になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>つまり、この2つは別の実行経路として分けて考える必要があります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>early.py</code>はこのブログ記事のGitHubで公開していますので、気になる方は試してみてください。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice"},"icon":"externalLink"} /-->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">3-3　アセンブリ言語でプログラムを作成してみよう</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">HALTとRETの違い</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第3章までのサンプルを動かすうえで、<code>HALT</code>と<code>RET</code>の違いも重要になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>簡単に分けると、次のようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li><code>HALT</code>: CPUを停止します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>RET</code>: 呼び出し元へ戻ります</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>単体プログラムとして直接実行する場合、最後は<code>HALT</code>が自然です。そこでプログラム全体を終わらせ、CPUを停止します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>一方、Simple OSの<code>exec</code>コマンドから外部プログラムとして実行する場合、最後は<code>RET</code>が必要になります。<code>RET</code>で呼び出し元、つまりOS側のコマンドループへ戻るためです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">pi.asmの末尾が書籍とGitHubで違う</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.69</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>円周率を1000桁計算する<code>pi.asm</code>で、最後の命令が書籍とGitHub最新版で違っていました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>書籍側では、単体プログラムとして直接実行する流れに見えるため、最後が<code>HALT</code>になっています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>一方、GitHub最新版では最後が<code>RET</code>になっています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>Git履歴を見ると、次の変更が確認できました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"diff","langName":"Diff"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-diff" data-lang="Diff"><code>-        HALT
++        RET</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>コミットメッセージは次の内容でした。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>execコマンドで起動できるように終了方法を変更</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>つまり、GitHub最新版の<code>pi.asm</code>は、Simple OSの<code>exec</code>コマンドから起動する前提に変更されています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li><a href="https://github.com/sueyasu/os_book_code/commit/4c3898e521d497e03ab487563838df3c228bf6f4" target="_blank" rel="noopener">Commit&nbsp;4c3898e : 5&nbsp;files&nbsp;changed</a></li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><a href="https://github.com/sueyasu/os_book_code/commits?author=sueyasu" target="_blank" rel="noopener">sueyasu</a>committedon Nov 1, 2025</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">pi.binをSimple OSのexecから実行する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>現在のGitHub最新版の<code>pi.asm</code>を使う場合、末尾は<code>RET</code>のままでOKです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>実行手順は次のようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>cd /path/os_book_code
+
+python asm.py os.asm
+python asm.py pi.asm
+
+mkdir -p dir
+cp pi.bin dir/pi.bin
+
+python emu.py</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>Simple OSが起動したら、プロンプトで次を入力します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>&gt; exec pi.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ここで注意が必要なのは、<code>exec pi.bin</code>はリポジトリ直下の<code>pi.bin</code>を直接読むわけではない、という点です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>emu.py</code>の<code>exec</code>処理では、内部的に<code>dir/&lt;ファイル名&gt;</code>を開きます。そのため、<code>pi.bin</code>は事前に<code>dir/pi.bin</code>として置いておく必要があります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>dir/pi.bin</code>が無い状態で実行すると、次のエラーになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>File open error.</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>これは<code>pi.asm</code>の文法エラーではなく、<code>exec</code>が読む場所に<code>pi.bin</code>が無いという意味です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第3章までで分かったこと</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第3章までを現在のGitHub最新版で動かすときは、次の点を押さえておくと混乱しにくいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li><code>asm.py</code>は<code>.asm</code>から<code>.bin</code>を作ります</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>Wrote ...</code>はアセンブル成功のログです</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>現在の<code>emu.py</code>は<code>os.bin</code>を起動します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>python emu.py hello.bin</code>としても、現在の<code>emu.py</code>は<code>hello.bin</code>を読みません</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>書籍序盤の単体プログラムを直接実行するなら<code>early.py</code>を使います</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>HALT</code>はCPU停止です</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>RET</code>は呼び出し元へ戻る命令です</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>pi.asm</code>は単体実行なら<code>HALT</code>、Simple OSの<code>exec</code>から実行するなら<code>RET</code>にします</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>exec pi.bin</code>は<code>dir/pi.bin</code>を読みます</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>書籍本文とGitHub最新版が、常に同じ段階のコードを前提にしているとは限りません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>迷ったときは、エミュレータが実際にどのファイルを<code>open()</code>しているか、<code>PC</code>の初期値がどこになっているか、プログラムの最後が<code>HALT</code>か<code>RET</code>かを見ると切り分けやすいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第4章へ進む前に</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第4章からは「シングルタスクOSを開発」に入ります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ここからは、<code>emu.py</code>が<code>os.bin</code>を起動すること自体が本筋になります。第3章までで混乱しやすかった「単体プログラムを直接実行する世界」と「OSを起動して、その上でプログラムを動かす世界」が、ここから少しずつつながっていきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>第4章へ進む前に、次の3つを区別できていればOKです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li><code>asm.py</code>: アセンブリをバイナリに変換します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>early.py</code>: 書籍序盤の単体プログラムを直接実行します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>emu.py</code>: 現在のGitHub最新版では<code>os.bin</code>を読み込んでSimple OSを起動します</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>ここまで整理できたので、次はシングルタスクOSの開発に進みます。</p>
+<!-- /wp:paragraph -->

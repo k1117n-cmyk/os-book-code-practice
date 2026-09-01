@@ -1,0 +1,582 @@
+「いちばんやさしい！OS自作超入門」第7章でつまずいたこと | UNIX Cafe
+<!-- wp:paragraph -->
+<p>書籍「いちばんやさしい！OS自作超入門」を読みながら、<code>os_book_code</code> の第7章を進めます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>第7章では、タスクごとに仮想メモリを使えるようにし、タスク1からタスク3を同じ仮想アドレス上で動かします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この記事では、第7章を進める中でつまずいた点と、手元で確認した対応を整理します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>今回の記事で使う第7章の固定コードは、補助リポジトリの <code>lessons/07-virtual-memory-page-fault/</code> にまとめています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第5章・第6章から第7章への流れ</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第5章と第6章では、Simple OS にタスク管理の仕組みを追加していきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>第5章では <code>sleep</code> システム関数やタスク状態を扱い、第6章ではタイマー割り込みを使ったタスク切り替えと、仮想コンソールの切り替えを確認しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この時点では、タスク1からタスク3はそれぞれ別の処理を持ち、OS側が保存している <code>SP</code> や <code>PC</code> を切り替えることで並行に動いているように見えます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>第7章では、ここに仮想メモリの仕組みが加わります。タスクごとにページテーブルを持たせることで、タスク1からタスク3が同じ論理アドレス <code>0x00000</code> からプログラムを実行できるようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>つまり、第6章までは「どのタスクを動かすか」を切り替えていましたが、第7章ではさらに「そのタスクから見えるメモリ空間」も切り替えるようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そのため、第7章のつまずきは、タスク切り替えそのものよりも、<code>PC</code>、<code>PT</code>、ページテーブル、論理アドレスの対応をどう読むかに集中しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading"><code>print_t1_message</code> から <code>print_t3_message</code> の参照も削除する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第7章で仮想メモリを有効にするところでは、<code>Task DATA</code> を変更し、これまでタスクごとの表示に使っていた次のラベルを削除します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>print_t1_message:
+print_t2_message:
+print_t3_message:</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ここで注意が必要なのは、<code>Task DATA</code> 側のラベル定義を削除するだけでは足りない点です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ファイル前半の <code>Task1 Setup</code> から <code>Task3 Setup</code> にも、初期スタックへ積む <code>PC</code> としてこれらのラベルを参照する行が残っています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; Task1 Setup
+        MOVI    SP, T1_STACK_BTM
+        MOVI    R0, print_t1_message
+        PUSH    R0              ; PC
+
+; Task2 Setup
+        MOVI    SP, T2_STACK_BTM
+        MOVI    R0, print_t2_message
+        PUSH    R0              ; PC
+
+; Task3 Setup
+        MOVI    SP, T3_STACK_BTM
+        MOVI    R0, print_t3_message
+        PUSH    R0              ; PC</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>Task DATA</code> からラベル定義を消した状態で、これらの参照だけが残っていると、<code>asmx.py</code> の実行時に未定義シンボルのエラーになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asmx.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>os.asm:14: error: undefined symbol &#x27;print_t1_message&#x27;
+        MOVI    R0, print_t1_message
+                    ^^^^^^^^^^^^^^^^</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>print_t1_message</code> の行だけを消して再実行すると、次は <code>print_t2_message</code>、その次は <code>print_t3_message</code> が同じ理由でエラーになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>os.asm:36: error: undefined symbol &#x27;print_t2_message&#x27;
+os.asm:58: error: undefined symbol &#x27;print_t3_message&#x27;</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>そのため、仮想メモリ用のタスク初期化に変更するタイミングで、<code>Task1 Setup</code> から <code>Task3 Setup</code> にある次の3行も削除します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"diff","langName":"Diff"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-diff" data-lang="Diff"><code> ; Task1 Setup
+         MOVI    SP, T1_STACK_BTM
+-        MOVI    R0, print_t1_message
+         PUSH    R0              ; PC
+
+ ; Task2 Setup
+         MOVI    SP, T2_STACK_BTM
+-        MOVI    R0, print_t2_message
+         PUSH    R0              ; PC
+
+ ; Task3 Setup
+         MOVI    SP, T3_STACK_BTM
+-        MOVI    R0, print_t3_message
+         PUSH    R0              ; PC</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>修正後にもう一度アセンブルします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asmx.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>次のように <code>os.bin</code> が出力されれば、この未定義シンボルは解消しています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Wrote os.bin (1046544 bytes)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading"><code>T0_PT</code> は数字のゼロ</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>ページテーブルの定義では、タスク0用のページテーブルとして <code>T0_PT</code> を使います。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>        .DEF    T0_PT   0xFFF00</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ここで注意したいのは、<code>T0_PT</code> の中央はアルファベットの <code>O</code> ではなく、数字の <code>0</code> だという点です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>つまり、正しい表記は <code>T0_PT</code> です。<code>TO_PT</code> ではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>正: T0_PT
+誤: TO_PT</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>定義側も参照側もすべて <code>TO_PT</code> と書いてしまった場合、シンボル名としては一致しているため、アセンブル時のエラーにはなりません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただし、作者リポジトリのコードでは <code>T0_PT</code> になっています。<code>T1_PT</code>、<code>T2_PT</code>、<code>T3_PT</code> と並べて読むと、タスク0のページテーブルを表す <code>T0_PT</code> の方が意味も揃います。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>後からページテーブルの処理を読み返すときに紛らわしくなるため、この名前は <code>T0_PT</code> にそろえておくのがよさそうです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading"><code>taskexec</code> で起動したタスクの初期PCに注意する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第7章で <code>taskexec hello_task.bin</code> を実行するところでは、タスク1からタスク3として同じプログラムを起動します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ここで、書籍の図19から図21の <code>Task1 Setup</code> から <code>Task3 Setup</code> をそのまま入力すると、タスク1からタスク3の初期スタックに積む <code>PC</code> が <code>idle_loop</code> になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; Task2 Setup
+        MOVI    SP, T2_STACK_BTM
+        MOVI    R0, idle_loop
+        PUSH    R0              ; PC</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この状態でも、<code>taskexec</code> コマンド自体はタスクIDを割り当てます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>手元では、次のように3回まではプロンプトに戻り、4回目でタスクIDを割り当てられないことを確認しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>&gt; taskexec hello_task.bin
+&gt; taskexec hello_task.bin
+&gt; taskexec hello_task.bin
+&gt; taskexec hello_task.bin
+Could not assign tid.</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ただし、この状態では仮想コンソール1から3に切り替えても、<code>Hello, World!</code> は表示されませんでした。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>理由は、<code>taskexec</code> が <code>hello_task.bin</code> を各タスクの論理アドレス <code>0x00000</code> に読み込む一方で、タスクの初期 <code>PC</code> が <code>idle_loop</code> を指しているためです。つまり、プログラムは読み込まれていても、タスク切り替え後に読み込んだ先頭アドレスへ飛びません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>書籍175ページでは、この項目の該当ファイルとして、作者リポジトリの <code>v1.1</code> タグを取得する手順が案内されています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>git fetch
+git checkout v1.1</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この <code>v1.1</code> の <code>os.asm</code> を確認すると、タスク1からタスク3の初期 <code>PC</code> は <code>idle_loop</code> ではなく <code>0</code> になっています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; Task2 Setup
+        MOVI    SP, T2_STACK_BTM
+        MOVI    R0, 0
+        PUSH    R0              ; PC</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この形にすると、<code>taskexec</code> で読み込まれた <code>hello_task.bin</code> が論理アドレス <code>0x00000</code> から実行されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>実際に作者リポジトリの <code>v1.1</code> で確認すると、<code>taskexec hello_task.bin</code> を3回実行したあと、仮想コンソール1から3にそれぞれ <code>Hello, World!</code> が表示されました。4回目は書籍の説明どおり <code>Could not assign tid.</code> になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そのため、ここは単純な入力ミスというより、書籍の図19から図21だけを追っていると不足する箇所だと考えられます。<code>taskexec</code> の動作確認まで進める場合は、書籍175ページで案内されている <code>v1.1</code> の <code>Task1 Setup</code> から <code>Task3 Setup</code> に合わせて、初期 <code>PC</code> を <code>0</code> にする必要があります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">エミュレータ側にもページテーブルを用意する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第7章では、OS側で <code>PT</code> レジスタを使い、タスクごとのページテーブルを参照するようになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただし、<code>emu.py</code> 側でページテーブルの置き場所が初期化されていないと、タスクを切り替えても期待した論理アドレスから物理メモリへ変換されません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そこで、タスクごとのページテーブルアドレスを固定値に変更しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"diff","langName":"Diff"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-diff" data-lang="Diff"><code>-task_pt_addr = [ 0, 0, 0, 0 ]
++task_pt_addr = [ 0xFFF00, 0xFFF10, 0xFFF20, 0xFFF30 ]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>さらに、エミュレータ起動時に各ページテーブルの内容を書き込むようにします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>本の最初のサンプルでは、タスク0のページテーブルは、論理ページ <code>0</code> から <code>15</code> がそのまま物理ページ <code>0</code> から <code>15</code> に対応する設定です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>論理ページ 0 -&gt; 物理ページ 0
+論理ページ 1 -&gt; 物理ページ 1
+論理ページ 2 -&gt; 物理ページ 2
+...
+論理ページ 15 -&gt; 物理ページ 15</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>一方で、タスク1からタスク3は、それぞれのプログラムを論理アドレス <code>0x00000</code> から実行できるように、論理ページ <code>0</code> だけを別々の物理ページに対応させます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>タスク1: 論理ページ 0 -&gt; 物理ページ 1
+タスク2: 論理ページ 0 -&gt; 物理ページ 2
+タスク3: 論理ページ 0 -&gt; 物理ページ 3</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>これにより、タスク1、タスク2、タスク3は、どれも自分から見ると <code>0x00000</code> 番地で動いているように見えます。しかし実際の物理メモリ上では、それぞれ <code>0x10000</code>、<code>0x20000</code>、<code>0x30000</code> に分かれて配置されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ページテーブル内の <code>0xFF</code> は、その論理ページを使えないようにする印です。MMU が有効な状態で <code>0xFF</code> のページにアクセスすると、ページフォルトとして扱われます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>書籍の流れでは、まずこの設定で論理アドレス <code>0x00000</code> と物理アドレス <code>0x00000</code> をダンプします。そのあとで、タスク0の論理ページ <code>3</code> を物理ページ <code>7</code> に対応させるようにページテーブルを書き換えて確認します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>次のコードは、その書き換え後の確認用コードです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code># ページテーブルを設定
+t0_pt = task_pt_addr[0]
+t1_pt = task_pt_addr[1]
+t2_pt = task_pt_addr[2]
+t3_pt = task_pt_addr[3]
+memory[t0_pt:t0_pt + 0x10] = [0x00, 0x01, 0x02, 0x07, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t1_pt:t1_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t2_pt:t2_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]
+memory[t3_pt:t3_pt + 0x10] = [0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この配列は、左から順に論理ページ <code>0</code>、<code>1</code>、<code>2</code>、<code>3</code> ... の対応先を表します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そのため、タスク0の4番目の値を <code>0x07</code> にすると、タスク0の論理ページ <code>3</code> が物理ページ <code>7</code> に対応します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code>memory[t0_pt:t0_pt + 0x10] = [
+    0x00, 0x01, 0x02, 0x07,
+    0x04, 0x05, 0x06, 0x07,
+    0x08, 0x09, 0x0A, 0x0B,
+    0x0C, 0x0D, 0x0E, 0x0F,
+]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>つまり、タスク0で MMU が有効な状態では、論理アドレス <code>0x30000</code> が物理アドレス <code>0x70000</code> に変換されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>動作確認用に、物理アドレス <code>0x70000</code> に分かりやすい値も入れておきました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code>memory[0x70000:0x70004] = [0x12, 0x34, 0x56, 0x78]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading"><code>dump.asm</code> で論理アドレスと物理アドレスを比較する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>ページテーブルによる変換を確認するため、<code>dump.asm</code> を追加しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>本の最初の確認では、論理アドレスと物理アドレスの両方に <code>0x00000</code> を指定します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>	MOVI	R8, lmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x00000	; 論理アドレス
+	MOVI	R9, 1
+	SYSCALL	40
+
+	MOVI	R8, pmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x00000	; 物理アドレス
+	MOVI	R9, 0
+	SYSCALL	40
+
+	RET</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>同じ <code>0x00000</code> でも、<code>R9</code> の値によって読み方が変わります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>R9 = 1: 0x00000 を論理アドレスとして読む
+R9 = 0: 0x00000 を物理アドレスとして読む</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>タスク0の論理ページ <code>0</code> が物理ページ <code>0</code> に対応している状態では、どちらも最終的には物理アドレス <code>0x00000</code> を読みます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>論理アドレス 0x00000
+  -&gt; 論理ページ 0
+  -&gt; 物理ページ 0
+  -&gt; 物理アドレス 0x00000</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>今回の実装では、<code>exec dump.bin</code> で実行するプログラムは物理メモリの先頭に読み込まれます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code>memory[0:len(prog)] = prog</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>そのため、物理アドレス <code>0x00000</code> をダンプすると、空のメモリではなく、<code>dump.bin</code> 自身の機械語や文字列が表示されます。ダンプの中に次のような文字列が見えるのは、<code>dump.asm</code> に書いた文字列データが <code>dump.bin</code> の中に含まれているためです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>[Logical Memory Dump]
+[Physical Memory Dump]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>次に、マッピングを書き換えた状態を確認するため、<code>dump.asm</code> の対象アドレスも変更します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>	MOVI	R8, lmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x30000	; 論理アドレス
+	MOVI	R9, 1
+	SYSCALL	40
+
+	MOVI	R8, pmem_msg
+	SYSCALL 1
+
+	MOVI	R8, 0x70000	; 物理アドレス
+	MOVI	R9, 0
+	SYSCALL	40
+
+	RET</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>SYSCALL 40</code> は、<code>R8</code> に指定したアドレスからメモリダンプを表示します。 <code>R9</code> に <code>1</code> を入れると論理アドレスとして読み、<code>0</code> を入れると物理アドレスとして読みます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code>elif syscall_num == 40:
+    start_addr = value1 &amp; 0xFFFFF
+    flag_logical = value2 &amp; 1
+    memdata = []
+    if flag_logical:
+        for i in range(256):
+            memdata +=  read_lmem(value1 + i, 1).to_bytes()
+    else:
+        memdata = memory[value1:value1+256]
+    hexdump(memdata, start_addr)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>dump.asm</code> をアセンブルして、<code>dir</code> の下に配置します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asmx.py dump.asm dir/dump.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Wrote dump.bin (93 bytes)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>OSを起動して <code>dump.bin</code> を実行します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>&gt; exec dump.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>論理アドレス <code>0x30000</code> の先頭に、物理アドレス <code>0x70000</code> に入れた <code>12 34 56 78</code> が見えれば、ページテーブルによるアドレス変換を確認できます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>[Logical Memory Dump]
+30000  12 34 56 78 ...
+
+[Physical Memory Dump]
+70000  12 34 56 78 ...</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この実験では、物理ページ <code>0</code> ではなく物理ページ <code>7</code> に確認用データを置いているため、プログラム本体と混ざらず、変換結果を追いやすくなります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">ページフォルトはメモリアクセス時の例外</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>次に、ページフォルトの発生を確認します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この本のこの段階では、ページフォルトは「未割り当てのメモリへアクセスしたときのエラー処理」と考えると分かりやすいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>もう少し正確に言うと、ページフォルトは、メモリアクセス時に CPU が検出する例外です。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>例えば、ページテーブルが次のようになっているとします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>論理ページ 2 -&gt; 0xFF</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>0xFF</code> は、対応する物理ページが割り当てられていないことを表します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この状態で、プログラムが論理ページ <code>2</code> に属するアドレスへアクセスすると、ページフォルトが発生します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>STDI	R0, [0x23000]</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>0x23000</code> は論理ページ <code>2</code> に含まれるアドレスです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>論理アドレス 0x23000
+  -&gt; 論理ページ 2
+  -&gt; ページテーブルの値が 0xFF
+  -&gt; 物理ページが割り当てられていない
+  -&gt; ページフォルト発生</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>今回作っているOSでは、ページフォルトが起きたらメッセージを表示して停止するだけです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Page Fault has occurred.
+CPU halted.</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>そのため、この章の範囲では「メモリに関するエラーを検出して、ページフォルトハンドラへ処理を移す仕組み」を確認している、と捉えればよさそうです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>ただし、一般的なOSでは、ページフォルトは必ずしも致命的なエラーとは限りません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>例えば、まだ物理メモリに読み込んでいないページへアクセスしたときにページフォルトを発生させ、OSが必要なページを読み込んでから、止まった命令を再開することもあります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>未読み込みのページへアクセス
+  -&gt; ページフォルト
+  -&gt; OSが必要なページを用意する
+  -&gt; ページテーブルを更新する
+  -&gt; 元の命令から再開する</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この本では、まずその入口として、未割り当てページへのアクセスでページフォルトハンドラが呼ばれることを確認します。</p>
+<!-- /wp:paragraph -->

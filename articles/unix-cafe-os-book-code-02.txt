@@ -1,0 +1,571 @@
+「いちばんやさしい！OS自作超入門」 第4章でつまずいたこと | UNIX Cafe
+<!-- wp:image {"id":53973,"sizeSlug":"large","linkDestination":"none"} -->
+<figure class="wp-block-image size-large"><img src="https://pc-fan.net/wp/wp-content/uploads/2026/08/Firefly_Gemini-Flash_レトロな黒背景のUNIXターミナル画面を中心にしたブログ用アイキャッチ画像。画面には-Simple-OS-のプロンプト、os.asm、asm.py、_-asmx.py、-998142-1-800x446.webp" alt="「いちばんやさしい！OS自作超入門」第2回 第4章でつまずいたこと | UNIX Cafe" class="wp-image-53973"/></figure>
+<!-- /wp:image -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">第４章で気になったことを整理する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>前回は、『いちばんやさしい！OS自作超入門』の第3章までを進める中で、<code>emu.py</code>の役割や<code>HALT</code> / <code>RET</code>の違いでつまずいた点を整理しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>今回は第4章です。第4章では、単体プログラムをCPUエミュレータで動かす段階から、<code>os.bin</code>としてSimple OSを起動し、その上で<code>reg</code>、<code>ls</code>、<code>exec</code>、<code>date</code>などのコマンドを動かす段階へ進みます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この記事では、第4章を進める中で気づいたこと、つまずいた点と、手元で確認した対応を、書籍の進行順に整理します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:pochipp/linkbox {"pid":53861,"isCount":true,"cvKey":"1e3df3cd"} /-->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">使用環境</h2>
+<!-- /wp:heading -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li>macOS</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>Python 3</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>GitHubリポジトリ: <a href="https://github.com/sueyasu/os_book_code" target="_blank" rel="noopener">https://github.com/sueyasu/os_book_code</a></li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands</a></li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>作業ディレクトリ: <code>os_book_code</code>ローカル側のディレクトリ名です。</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">4-2　CPUエミュレータを変更</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">emu.pyがos.bin起動用になる</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.76</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>    # プログラムをロード
+    try:
+        with open(&quot;os.bin&quot;, &quot;rb&quot;) as file:
+            prog = file.read()
+            memory[0:len(prog)] = prog
+    except:
+        print(&quot;OSを読み込めませんでした。&quot;)
+        sys.exit()</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>第4章では、CPUエミュレータ側で<code>os.bin</code>を読み込む形に変更し、<code>SP</code>や<code>PC</code>の初期値もOS起動用に変わります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>この変更後は、第1章から第3章で使っていたような、次の手順では<code>hello.bin</code>を直接実行できません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python emu.py hello.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>この時点の<code>emu.py</code>は、引数の<code>hello.bin</code>ではなく、カレントディレクトリの<code>os.bin</code>を読み込む前提になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li>Simple OSを起動する場合は、<code>python emu.py</code>を使います</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>hello.bin</code>のような単体プログラムを直接確認したい場合は、序盤用の<code>early.py</code>を使います</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>Simple OSから外部プログラムを実行する場合は、<code>exec</code>コマンドが使えるようになってから<code>dir/</code>配下に<code>.bin</code>を置いて実行します</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>第4章の途中では一時的に「前回の<code>hello.bin</code>直接実行手順」と「これから作るOS上での<code>exec</code>実行手順」の間にいる、と理解すると混乱しにくいです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">作業前にgit statusを確認する</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第4章の脚注には、次のようなコマンドが出てきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>git fetch && git checkout v0.2
+git fetch && git checkout v0.3</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>これらは指定されたタグやブランチの状態へ作業ツリーを切り替える操作です。手元で編集している<code>os.asm</code>や<code>asm.py</code>がある場合、内容が上書きされたり、切り替え前にコミットや退避を求められたりします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>実行前に、次のコマンドで作業ツリーの状態を確認しておきます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>git status</code> はファイルの変更状況を確認するコマンドです。画面に <code>working tree clean</code> と表示されれば、安全に次の切り替え操作に進めます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>git status</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">エラーメッセージを追いやすくする</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">アセンブリのタイポが「Pythonのエラー」になる原因</h3>
+<!-- /wp:heading -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asm.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>os.asm</code> をアセンブルするとき、ラベル名をタイプミスすると、次のようなPythonのtracebackが表示されました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>NameError: name &#39;_get__nth_token_end&#39; is not defined</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>一見すると<code>asm.py</code>のバグに見えますが、原因は <code>os.asm</code> 側の記述ミスです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>JPZI    _get__nth_token_end</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>定義されているラベルは<code>_get_nth_token_end</code>なので、正しくは次のように書きます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>JPZI    _get_nth_token_end</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>asm.py</code> は、ラベルの評価にPythonの <code>eval()</code> を利用しているため、未定義のラベルを読み込むとPythonの <code>NameError</code> がそのまま表示されてしまいます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">補助ツールasmx.pyを用意する</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>元の<code>asm.py</code>では、即値やラベルを評価するときにPythonの<code>eval()</code>を使っています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"python","langName":"Python"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-python" data-lang="Python"><code>return eval(exp)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ラベル名が<code>symbol_table</code>に存在しない場合、その名前がPythonの未定義変数として<code>eval()</code>に渡されます。その結果、アセンブラとしてのエラーではなく、Pythonの<code>NameError</code>がそのまま表示されていました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そこで、<code>asm.py</code>のエラーメッセージを少し改造した補助ツールとして、<code>asmx.py</code>を用意しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>asmx.py</code>の<code>x</code>は、<code>asm.py</code>のextended版という意味です。短く入力でき、元の<code>asm.py</code>をもとにした補助版だと分かりやすい名前にしています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asmx.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>元の<code>asm.py</code>を直接置き換えず、エラー原因を詳しく見たいときだけ<code>asmx.py</code>を使う形にしておくと、書籍の元コードとの差分も追いやすくなります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>asmx.py</code>では、gccやclangのように「どのファイルの何行目で、どの部分が原因か」を見やすくしました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>os.asm:185: error: undefined symbol &#39;_get__nth_token_end&#39;
+        JPZI    _get__nth_token_end
+                ^^^^^^^^^^^^^^^^^^^
+hint: did you mean &#39;_get_nth_token_end&#39;?</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>未定義ラベル、オペランド不足、オペランド過多、不正レジスタ、<code>.BYTE</code>などの引数不足、20ビット即値の範囲外も、Pythonのtracebackではなくアセンブラ風のエラーとして表示するようにしました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>asmx.py</code>はこのブログ記事のGitHubで公開していますので、気になる方は試してみてください。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands"},"icon":"externalLink"} /-->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">4-4　プログラムを実行するコマンドを追加</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">execコマンドで外部プログラムを実行する</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.93</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>4-4では、Simple OSに<code>exec</code>コマンドを追加します。ここからは、<code>hello.bin</code>や<code>pi.bin</code>のようなユーザープログラムを、エミュレータに直接渡すのではなく、Simple OSのプロンプトから起動する流れになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>実行する<code>.bin</code>ファイルは、<code>dir/</code>配下に置きます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python asm.py pi.asm
+mkdir -p dir
+cp pi.bin dir/pi.bin
+python emu.py</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>Simple OSが起動したら、プロンプトで次のように入力します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>&gt; exec pi.bin</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>dir/pi.bin</code>が無い場合は、次のようなエラーになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>File open error.</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">4-5　現在時刻を表示できるようにする</h2>
+<!-- /wp:heading -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">tick数カウント追加時のADDRエラー</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.101</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>os.asm</code>にtick数をカウントするための割り込み処理を追加したところ、次のエラーが出ました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>os.asm:131: error: .ADDR が現在位置より小さい値を指定しています: 0xB0000 &lt; 0xFF865
+            .ADDR   0xB0000
+                    ^^^^^^^</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>このエラーは、<code>.ADDR 0xB0000</code>そのものが間違っているという意味ではありません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>直前に追加した割り込みベクタテーブルを、<code>0xFF800</code>へ配置していたことが原因でした。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; Vector Table
+        .ADDR   0xFF800
+vector_table:
+        .DWORD  int_timer
+        .DWORD  int_other
+        .DWORD  int_other
+        .DWORD  int_other</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>asm.py</code>は、ソースコードを上から順番に読みながら、出力ファイル上の現在位置を進めていきます。そのため、一度<code>.ADDR 0xFF800</code>で現在位置を高い番地へ進めると、そのあとに<code>.ADDR 0xB0000</code>で低い番地へ戻ることはできません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>対応として、割り込みベクタテーブルをソースの末尾側へ移動しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>0x80000  OS本体
+0xB0000  システム関数
+0xB1000  get_nth_token
+0xC0000  keybuffer
+0xC1000  tokenbuffer
+0xFF800  割り込みベクタテーブル</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>テキストを見直すと、図22の下には「os.asmの末尾にこのコードを追加する」という注意書きがあります。ここを読み落として、図21の直後に続けて書くと、今回のように<code>.ADDR</code>の後戻りエラーになります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>修正後は次のように成功しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python3 asm.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Wrote os.bin (1046544 bytes)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>os.bin</code>のサイズが大きくなっているのは、<code>.ADDR 0xFF800</code>まで0でパディングされるためです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">tick数が増えていることを確認する</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>タイマー割り込み処理では、<code>TP</code>レジスタをインクリメントしています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>int_timer:
+        INC     TP</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>reg</code>コマンドで確認すると、<code>TP</code>が増えていることが分かりました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>TP: 000000EA
+TP: 000001F4</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>0xEA</code>は10進数で234、<code>0x1F4</code>は10進数で500です。この値が増えているので、タイマー割り込みごとに<code>int_timer</code>が呼ばれ、<code>INC TP</code>が実行されていると見てよさそうです。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">dateコマンド追加時のつまずき</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><strong>テキスト P.104</strong></p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">do_dateラベルが未定義になる</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>続いて、書籍の図24から図26に従って<code>date</code>コマンドを追加したところ、<code>do_date</code>が未定義というエラーになりました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>os.asm:84: error: undefined symbol &#39;do_date&#39;
+        JPZI    do_date
+                ^^^^^^^
+hint: did you mean &#39;cmd_date&#39;?</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>書籍の図25には、<code>date</code>コマンドを判定するコードが載っています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; date
+        MOVI    R9, cmd_date
+        CALLI   cmp_str
+        JPZI    do_date</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>また、図26には<code>cmd_date</code>と<code>basetime</code>のデータ定義が載っています。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>cmd_date:
+        .STRING &quot;date&quot;
+
+basetime:
+        .DWORD  0</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>ただ、図24、図25、図26で説明が終わり、その次が第5章に進んでいますので、ジャンプ先である<code>do_date:</code>本体の追加コードは見当たりません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p>そのため、図25のコードだけを追加すると、<code>JPZI do_date</code>のジャンプ先が存在せず、<code>undefined symbol 'do_date'</code>になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:paragraph -->
+<p><code>SYSCALL 11</code>の説明から考えると、最低限必要な<code>do_date:</code>本体は次の形になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>do_date:
+        LDDI    R8, [basetime]
+        SYSCALL 11
+        JPI     cmdloop</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p><code>LDDI R8, [basetime]</code>で、OS起動時に保存したUNIXタイムを<code>basetime</code>から読み出します。そのあと<code>SYSCALL 11</code>を呼ぶと、エミュレータ側で<code>R8</code>の基準時刻と<code>TP</code>のtick数から現在時刻を計算して表示します。最後に<code>JPI cmdloop</code>でSimple OSのコマンド入力待ちへ戻ります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading {"level":3} -->
+<h3 class="wp-block-heading">date判定を入れる場所</h3>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p><code>date</code>コマンドの判定コードは、未知コマンドのエラー表示より前に置く必要があります。例えば、<code>exec</code>判定の後、次のエラー表示へ進む前に入れます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>; exec
+        MOVI    R9, cmd_exec
+        CALLI   cmp_str
+        JPZI    do_exec
+; date
+        MOVI    R9, cmd_date
+        CALLI   cmp_str
+        JPZI    do_date
+
+        MOVI    R8, cmd_error1
+        SYSCALL 1</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>未知コマンドのエラー表示より後ろに<code>date</code>判定を置くと、<code>date</code>と入力しても先にエラー処理へ流れてしまい、<code>do_date</code>まで到達しません。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">date追加時の完成形</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>冒頭部分は次のようにします。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>        .ADDR   0x80000
+        SYSCALL 10
+        STDI    R8, [basetime]
+        MOVI    TP, 0
+        MOVI    VT, vector_table
+        EI
+        MOVI    R8, start_message
+        SYSCALL 1</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>コマンド実行部分には、書籍のページ内では見当たらなかった<code>do_date:</code>本体を追加します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>do_date:
+        LDDI    R8, [basetime]
+        SYSCALL 11
+        JPI     cmdloop</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>データ部分には、書籍の図26どおり<code>cmd_date</code>と<code>basetime</code>を追加します。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"asm","langName":"Asm"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-asm" data-lang="Asm"><code>cmd_date:
+        .STRING &quot;date&quot;
+basetime:
+        .DWORD  0</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>修正後は、アセンブルが成功しました。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block {"langType":"bash","langName":"Bash"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-bash" data-lang="Bash"><code>python3 asm.py os.asm</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:loos-hcb/code-block {"langType":"text","langName":"Text"} -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-text" data-lang="Text"><code>Wrote os.bin (1046544 bytes)</code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:paragraph -->
+<p>OSを起動して、dateコマンドを実行すると、現在時刻が表示されます。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:loos-hcb/code-block -->
+<div class="hcb_wrap"><pre class="prism undefined-numbers lang-plain"><code>$ python emu.py
+Welcome to Simple OS!
+&gt; date
+2026-08-27 19:46:50
+&gt; </code></pre></div>
+<!-- /wp:loos-hcb/code-block -->
+
+<!-- wp:heading -->
+<h2 class="wp-block-heading">今回のまとめ</h2>
+<!-- /wp:heading -->
+
+<!-- wp:paragraph -->
+<p>第4章では、<code>emu.py</code>の役割が単体プログラム実行用から<code>os.bin</code>起動用へ変わります。そのうえで、<code>os.asm</code>にコマンド処理、割り込み処理、ベクタテーブル、データ領域を少しずつ追加していくため、コードを入れる場所が重要になります。</p>
+<!-- /wp:paragraph -->
+
+<!-- wp:list {"className":"-list-under-dashed"} -->
+<ul class="wp-block-list -list-under-dashed"><!-- wp:list-item -->
+<li><code>emu.py</code>変更後は<code>python emu.py hello.bin</code>では<code>hello.bin</code>を直接実行できません</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>ラベル名のタイプミスは、元の<code>asm.py</code>ではPython tracebackとして出ます</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>補助ツール<code>asmx.py</code>を使うと、エラーの位置と候補を確認しやすくなります</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li><code>.ADDR</code>は現在位置を低い番地へ戻す用途には使えません</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>図22の割り込みベクタテーブルは、<code>os.asm</code>の末尾に追加します</li>
+<!-- /wp:list-item -->
+
+<!-- wp:list-item -->
+<li>図24から図26の範囲では、<code>do_date:</code>本体の追加コードは見当たりません</li>
+<!-- /wp:list-item --></ul>
+<!-- /wp:list -->
+
+<!-- wp:paragraph -->
+<p>本格的にアセンブラを作り込むなら、式パーサを<code>eval()</code>ではなく専用の安全な実装に置き換える方法もあります。ただ、学習中の補助としては、今回の最低限の診断だけでも、ラベル名や命令の書き間違いをかなり見つけやすくなります。</p>
+<!-- /wp:paragraph -->

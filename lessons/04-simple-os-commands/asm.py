@@ -92,6 +92,9 @@ def require_expression(expr: str, lineno: int, raw_line: str, what: str):
         error(lineno, raw_line, f"{what} の式がありません", what)
     return expr
 
+def normalize_expression(expr: str):
+    return re.sub(r'[\[\]]+', ' ', expr).strip()
+
 def require_directive_expr(s: str, lineno: int, raw_line: str, directive: str):
     fields = s.split(None, 1)
     if len(fields) < 2 or not fields[1].strip():
@@ -102,13 +105,13 @@ def parse_register_expression(s: str, lineno: int, raw_line: str, opcode: str):
     m = re.match(r'\S+\s+([^,\s]+)\s*,\s*(.+)$', s)
     if not m:
         error(lineno, raw_line, f"{opcode} の書式が不正です", opcode)
-    return m.group(1), require_expression(m.group(2), lineno, raw_line, opcode)
+    return m.group(1), require_expression(normalize_expression(m.group(2)), lineno, raw_line, opcode)
 
 def parse_expression_operand(s: str, lineno: int, raw_line: str, opcode: str):
     fields = s.split(None, 1)
     if len(fields) < 2:
         error(lineno, raw_line, f"{opcode} のオペランドが足りません（必要: 1, 実際: 0）", opcode)
-    return require_expression(fields[1], lineno, raw_line, opcode)
+    return require_expression(normalize_expression(fields[1]), lineno, raw_line, opcode)
 
 def checked_int(value, lineno: int, raw_line: str, token: str):
     try:
