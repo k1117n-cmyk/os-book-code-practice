@@ -33,4 +33,4 @@ python3 early.py asm_code/hello.bin
 ## 関連記事
 
 - [「いちばんやさしい！OS自作超入門」第3章まででつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter3-notes/)
-- [「いちばんやさしい！OS自作超入門」第4章でつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter4-notes/)
+- [「いちばんやさしい！OS自作超入門」第4章でつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter4-troubleshooting/)
