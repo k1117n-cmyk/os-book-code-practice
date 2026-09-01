@@ -34,3 +34,4 @@ python3 early.py asm_code/hello.bin
 
 - [「いちばんやさしい！OS自作超入門」第3章まででつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter3-notes/)
 - [「いちばんやさしい！OS自作超入門」第4章でつまずいたこと | UNIX Cafe](https://pc-fan.net/os-book-code-chapter4-troubleshooting/)
+- [「いちばんやさしい！OS自作超入門」第7章で仮想メモリとページフォルトを確認する | UNIX Cafe](https://pc-fan.net/os-book-code-chapter7-virtual-memory/)
