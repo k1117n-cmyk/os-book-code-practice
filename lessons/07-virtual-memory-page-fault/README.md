@@ -44,4 +44,4 @@ Simple OS 起動後、次のコマンドで確認します。
 
 ## Related Article
 
-- 「いちばんやさしい！OS自作超入門」第7章で仮想メモリとページフォルトを確認する
+- [「いちばんやさしい！OS自作超入門」第7章で仮想メモリとページフォルトを確認する](https://pc-fan.net/os-book-code-chapter7-virtual-memory/)
