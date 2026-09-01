@@ -1,3 +1,0 @@
-MOVI R0, 10
-MULI R0, 10
-HALT

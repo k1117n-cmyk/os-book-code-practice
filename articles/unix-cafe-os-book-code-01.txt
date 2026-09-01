@@ -71,7 +71,7 @@
 <!-- /wp:list-item -->
 
 <!-- wp:list-item -->
-<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice</a></li>
+<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/03-assembly-programs" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/03-assembly-programs</a></li>
 <!-- /wp:list-item -->
 
 <!-- wp:list-item -->
@@ -352,7 +352,7 @@ CR: C0000004</code></pre></div>
 <p><code>early.py</code>はこのブログ記事のGitHubで公開していますので、気になる方は試してみてください。</p>
 <!-- /wp:paragraph -->
 
-<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice"},"icon":"externalLink"} /-->
+<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/03-assembly-programs"},"icon":"externalLink"} /-->
 
 <!-- wp:heading -->
 <h2 class="wp-block-heading">3-3　アセンブリ言語でプログラムを作成してみよう</h2>
