@@ -8,11 +8,11 @@
 
 ## この記事で使うファイル
 
-今回の記事で使う第4章用のファイルは、リポジトリ内の `chapter4/` ディレクトリにまとめます。
+今回の記事で使う第4章用のファイルは、リポジトリ内の `lessons/04-simple-os-commands/` ディレクトリにまとめます。
 
 第4章の主な混乱ポイントは、各章ごとの完成版 `os.asm` と、それを動かすための Python ファイルが同じ場所にまとまっていないことでした。
 
-そこで、`chapter4/` には次のファイルを置きます。
+そこで、`lessons/04-simple-os-commands/` には次のファイルを置きます。
 
 - `os.asm`: 第4章の完成版です
 - `asm.py`: アセンブラです
@@ -21,7 +21,7 @@
 - `pi.asm`: `exec` コマンド確認用のプログラムです
 - `dir/`: `exec` コマンドが参照するディレクトリです
 
-ブログ本文の下書きである `article-draft.md` や `article-wordpress.txt` は、GitHub公開用の `chapter4/` には含めません。
+ブログ本文の下書きである `article-draft.md` や `article-wordpress.txt` は、GitHub公開用の `lessons/04-simple-os-commands/` には含めません。
 
 ## 第4章 4-2: `emu.py` が `os.bin` 起動用になる
 

@@ -39,7 +39,7 @@
 <!-- /wp:list-item -->
 
 <!-- wp:list-item -->
-<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/chapter4" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/chapter4</a></li>
+<li>補助リポジトリ: <a href="https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands" target="_blank" rel="noopener">https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands</a></li>
 <!-- /wp:list-item -->
 
 <!-- wp:list-item -->
@@ -224,7 +224,7 @@ hint: did you mean &#39;_get_nth_token_end&#39;?</code></pre></div>
 <p><code>asmx.py</code>はこのブログ記事のGitHubで公開していますので、気になる方は試してみてください。</p>
 <!-- /wp:paragraph -->
 
-<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/chapter4"},"icon":"externalLink"} /-->
+<!-- wp:loos/post-link {"isNewTab":true,"rel":"noopener noreferrer","linkData":{"url":"https://github.com/k1117n-cmyk/os-book-code-practice/tree/main/lessons/04-simple-os-commands"},"icon":"externalLink"} /-->
 
 <!-- wp:heading -->
 <h2 class="wp-block-heading">4-4　プログラムを実行するコマンドを追加</h2>

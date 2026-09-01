@@ -11,6 +11,10 @@
 <p>この記事では、第7章を進める中でつまずいた点と、手元で確認した対応を整理します。</p>
 <!-- /wp:paragraph -->
 
+<!-- wp:paragraph -->
+<p>今回の記事で使う第7章の固定コードは、補助リポジトリの <code>lessons/07-virtual-memory-page-fault/</code> にまとめています。</p>
+<!-- /wp:paragraph -->
+
 <!-- wp:heading -->
 <h2 class="wp-block-heading">第5章・第6章から第7章への流れ</h2>
 <!-- /wp:heading -->

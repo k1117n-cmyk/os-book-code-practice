@@ -1,65 +1,27 @@
-# Next Task
+# Project Status
 
-## Current Checkpoint
+「いちばんやさしい！OS自作超入門」を読みながら確認した学習用コードは、章ごとの完成状態として `lessons/` に整理しています。
 
-- Current local checkpoint: `29ca05b Add chapter 5 files`
-- Previous checkpoint: `039aa13 Checkpoint chapter 5 progress`
-- Pushed branch: `origin/chapter5-files`
-- Pull request URL:
-  - https://github.com/k1117n-cmyk/os-book-code-practice/pull/new/chapter5-files
+## Lessons
 
-## What Is Ready
+- `lessons/04-simple-os-commands/`: Simple OS の起動、`exec`、`date` コマンドの確認
+- `lessons/05-sleep-task-state/`: `sleep` システム関数とタスク状態の確認
+- `lessons/06-task-switch-console/`: タイマー割り込みによるタスク切り替えと仮想コンソールの確認
+- `lessons/07-virtual-memory-page-fault/`: 仮想メモリ、ページテーブル、ページフォルトの確認
 
-- `chapter5/` has been created with the Chapter 5 working files.
-- `chapter5/os.asm` uses the book/original repository style `[label]` operands.
-- `chapter5/asm.py` and `chapter5/asmx.py` accept `[label]` operands.
-- `chapter5/sleep.asm`, `chapter5/sleep.bin`, and `chapter5/dir/sleep.bin` are included.
-- `chapter4/README.md`, `chapter4/os.asm`, and `CHANGELOG.md` were corrected to remove the old incorrect `basetime` note.
+各ディレクトリの `README.md` に、使うファイルと実行手順をまとめています。
 
-## Verified Commands
+## Articles
 
-From `chapter5/`:
+- 第4章の記事は `articles/unix-cafe-os-book-code-02.md` にあります。
+- 第7章の記事は `articles/unix-cafe-os-book-code-chapter7.md` にあります。
+- 第5章と第6章は大きなつまずきがなかったため、個別記事にはせず、`lessons/` 配下の完成コードと README で補足しています。
 
-```sh
-python3 asmx.py os.asm
-python3 asmx.py sleep.asm
-```
+## Current Branch
 
-Expected results:
+- `chapter6-work`
 
-```text
-Wrote os.bin (1046544 bytes)
-Wrote sleep.bin (92 bytes)
-```
+## Last Published Work
 
-## Restore Points
-
-Return to the Chapter 5 checkpoint:
-
-```sh
-git switch --detach 29ca05b
-```
-
-Return to the checkpoint before creating `chapter5/`:
-
-```sh
-git switch --detach 039aa13
-```
-
-Return to the original Chapter 5 branch on GitHub:
-
-```sh
-git fetch origin
-git switch --detach origin/chapter5-files
-```
-
-## Next Step
-
-- Continue with Chapter 6.
-- Before making Chapter 6 changes, create a new branch or checkpoint commit from `29ca05b`.
-- If Chapter 6 work breaks the Chapter 5 state, return to `29ca05b`.
-
-## Local Notes
-
-- The repository is currently on a detached HEAD.
-- A root-level `sleep.bin` may remain untracked. It is not needed because `chapter5/sleep.bin` and `chapter5/dir/sleep.bin` are already committed.
+- 第6章と第7章の学習用コードを追加しました。
+- 章別ディレクトリを `lessons/` 配下へ整理しました。
